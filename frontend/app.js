@@ -308,7 +308,7 @@ function renderQuotaRow(key, metric) {
 }
 
 function renderServiceCardHead(group, metaHtml = '') {
-  const icon = SERVICE_ICONS[group.id] ?? '📊';
+  const icon = SERVICE_ICONS[group.id] ?? GROUP_ICONS[group.title] ?? '📊';
   return `
       <div class="service-card__head">
         <div class="service-card__heading">
@@ -320,7 +320,7 @@ function renderServiceCardHead(group, metaHtml = '') {
 }
 
 function renderServiceCard(group, quotas, serviceStatus) {
-  const activation = serviceStatus?.[group.id];
+  const activation = group.id ? serviceStatus?.[group.id] : undefined;
   if (activation === 'not_activated') {
     return `
     <div class="service-card">
@@ -334,7 +334,7 @@ function renderServiceCard(group, quotas, serviceStatus) {
     .filter(Boolean)
     .join('');
   if (!rows) return '';
-  const meta = group.metaFn(quotas);
+  const meta = group.metaFn?.(quotas);
   const metaHtml = meta ? `<span class="service-card__meta">${meta}</span>` : '';
   return `
     <div class="service-card">
@@ -345,7 +345,7 @@ function renderServiceCard(group, quotas, serviceStatus) {
 }
 
 function renderServiceSection(quotas, serviceStatus, collapsible = false) {
-  const cards = SERVICE_GROUPS
+  const cards = [...SERVICE_GROUPS, ...OTHER_GROUPS]
     .map((g) => renderServiceCard(g, quotas, serviceStatus))
     .filter(Boolean)
     .join('');
@@ -366,21 +366,7 @@ function renderServiceSection(quotas, serviceStatus, collapsible = false) {
 function renderAccountDetails(account) {
   if (!account.quotas || account.status !== 'ok') return '';
 
-  const serviceBlock = renderServiceSection(account.quotas, account.serviceStatus, false);
-  const otherBlocks = OTHER_GROUPS
-    .map((g) => {
-      const rows = g.keys
-        .map((k) => renderQuotaRow(k, account.quotas[k]))
-        .filter(Boolean)
-        .join('');
-      if (!rows) return '';
-      const groupIcon = GROUP_ICONS[g.title] ?? '📊';
-      return `<div class="quota-group-block"><h4 class="quota-group-block__title"><span class="quota-group-block__icon" aria-hidden="true">${groupIcon}</span>${g.title}</h4>${rows}</div>`;
-    })
-    .filter(Boolean)
-    .join('');
-
-  const body = [serviceBlock, otherBlocks].filter(Boolean).join('');
+  const body = renderServiceSection(account.quotas, account.serviceStatus, false);
   if (!body) return '';
 
   return `
@@ -670,6 +656,7 @@ async function loadDashboard() {
   if (!grid) return;
 
   if (!data.accounts?.length) {
+    grid.classList.remove('accounts-grid--single');
     grid.innerHTML = `
       <div class="empty-state">
         <div class="empty-state__icon">📊</div>
@@ -678,6 +665,8 @@ async function loadDashboard() {
       </div>`;
     return;
   }
+
+  grid.classList.toggle('accounts-grid--single', data.accounts.length === 1);
 
   const summary = aggregateMetrics(data.accounts);
   const statusEl = document.getElementById('dashboard-status');
