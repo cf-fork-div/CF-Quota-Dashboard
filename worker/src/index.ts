@@ -10,7 +10,7 @@ import type {
   QuotaFetchResult,
   RefreshStats,
 } from './types';
-import { ALERT_SERVICE_GROUPS, normalizeAlertRules } from './account-alerts';
+import { ALERT_SERVICE_GROUPS, normalizeAlertRules, validateAccountAlertConfig } from './account-alerts';
 import {
   addChannel,
   checkAlertTestRateLimit,
@@ -174,8 +174,11 @@ app.get('/api/public/token', requireAuth, async (c) => {
 
 app.get('/api/accounts', async (c) => {
   const threshold = getAlertThreshold(c.env.ALERT_THRESHOLD);
-  const accounts = await getAccounts(c.env.KV);
-  return c.json(accounts.map((a) => maskAccount(a, threshold)));
+  const [accounts, channels] = await Promise.all([
+    getAccounts(c.env.KV),
+    getChannels(c.env.KV),
+  ]);
+  return c.json(accounts.map((a) => maskAccount(a, threshold, channels)));
 });
 
 app.get('/api/alert-service-groups', async (c) => {
@@ -192,6 +195,7 @@ app.post('/api/accounts', requireAuth, async (c) => {
     apiToken?: string;
     enabled?: boolean;
     alertRules?: AccountAlertRule[];
+    notificationChannelId?: string;
   }>();
 
   if (!body.name?.trim() || !body.accountId?.trim() || !body.apiToken?.trim()) {
@@ -199,6 +203,17 @@ app.post('/api/accounts', requireAuth, async (c) => {
   }
 
   const threshold = getAlertThreshold(c.env.ALERT_THRESHOLD);
+  const channels = await getChannels(c.env.KV);
+  const alertValidation = validateAccountAlertConfig(
+    body.alertRules,
+    body.notificationChannelId,
+    channels,
+    threshold,
+  );
+  if (!alertValidation.ok) {
+    return c.json({ error: alertValidation.error }, 400);
+  }
+
   const alertRules = normalizeAlertRules(body.alertRules, undefined, threshold);
   const accounts = await getAccounts(c.env.KV);
   const account: AccountConfig = {
@@ -207,12 +222,13 @@ app.post('/api/accounts', requireAuth, async (c) => {
     accountId: body.accountId.trim(),
     apiToken: body.apiToken.trim(),
     enabled: body.enabled !== false,
+    notificationChannelId: alertValidation.notificationChannelId,
     alertRules: alertRules.length ? alertRules : undefined,
   };
   accounts.push(account);
   await saveAccounts(c.env.KV, accounts);
   scheduleQuotaRefresh(c.env, c.executionCtx);
-  return c.json(maskAccount(account, threshold), 201);
+  return c.json(maskAccount(account, threshold, channels), 201);
 });
 
 app.post('/api/accounts/verify', requireAuth, async (c) => {
@@ -246,7 +262,8 @@ app.put('/api/accounts/reorder', requireAuth, async (c) => {
   }
 
   const threshold = getAlertThreshold(c.env.ALERT_THRESHOLD);
-  return c.json(reordered.map((a) => maskAccount(a, threshold)));
+  const channels = await getChannels(c.env.KV);
+  return c.json(reordered.map((a) => maskAccount(a, threshold, channels)));
 });
 
 app.put('/api/accounts/:id', requireAuth, async (c) => {
@@ -258,21 +275,48 @@ app.put('/api/accounts/:id', requireAuth, async (c) => {
     apiToken?: string;
     enabled?: boolean;
     alertRules?: AccountAlertRule[];
+    notificationChannelId?: string;
   }>();
 
   const threshold = getAlertThreshold(c.env.ALERT_THRESHOLD);
-  const updated = await updateAccount(
-    c.env.KV,
-    id,
-    {
-      name: body.name,
-      accountId: body.accountId,
-      apiToken: body.apiToken,
-      enabled: body.enabled,
-      alertRules: body.alertRules,
-    },
-    threshold,
-  );
+  const existingAccounts = await getAccounts(c.env.KV);
+  const existing = existingAccounts.find((a) => a.id === id);
+  if (!existing) return c.json({ error: 'Account not found' }, 404);
+
+  const channels = await getChannels(c.env.KV);
+  const alertFieldsTouched =
+    body.alertRules !== undefined || body.notificationChannelId !== undefined;
+
+  let notificationChannelId = existing.notificationChannelId;
+  if (alertFieldsTouched) {
+    const alertRulesInput = body.alertRules !== undefined ? body.alertRules : existing.alertRules;
+    const channelIdInput =
+      body.notificationChannelId !== undefined
+        ? body.notificationChannelId
+        : existing.notificationChannelId;
+
+    const alertValidation = validateAccountAlertConfig(
+      alertRulesInput,
+      channelIdInput,
+      channels,
+      threshold,
+    );
+    if (!alertValidation.ok) {
+      return c.json({ error: alertValidation.error }, 400);
+    }
+    notificationChannelId = alertValidation.notificationChannelId;
+  }
+
+  const updates: Parameters<typeof updateAccount>[2] = {
+    name: body.name,
+    accountId: body.accountId,
+    apiToken: body.apiToken,
+    enabled: body.enabled,
+  };
+  if (body.alertRules !== undefined) updates.alertRules = body.alertRules;
+  if (alertFieldsTouched) updates.notificationChannelId = notificationChannelId;
+
+  const updated = await updateAccount(c.env.KV, id, updates, threshold);
 
   if (!updated) return c.json({ error: 'Account not found' }, 404);
 
@@ -282,7 +326,7 @@ app.put('/api/accounts/:id', requireAuth, async (c) => {
     scheduleQuotaRefresh(c.env, c.executionCtx);
   }
 
-  return c.json(maskAccount(updated, threshold));
+  return c.json(maskAccount(updated, threshold, channels));
 });
 
 app.delete('/api/accounts/:id', requireAuth, async (c) => {

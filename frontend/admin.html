@@ -97,10 +97,23 @@
               </div>
             </div>
             <p class="form-hint account-modal__alert-hint">
-              按服务启用用量百分比告警；达到阈值后通过已启用的通知渠道推送。
+              按服务启用用量百分比告警；达到阈值后推送到所选通知渠道。
             </p>
+            <div id="alert-no-channels" class="alert-no-channels hidden">
+              <p class="alert-no-channels__message">
+                通知渠道未配置，请先在<a href="/channels">通知渠道页面</a>添加
+              </p>
+            </div>
+            <div id="alert-channel-field" class="form-group alert-channel-field">
+              <label class="form-label" for="notification-channel-select">通知渠道</label>
+              <select name="notificationChannelId" id="notification-channel-select" class="glass-input" required>
+                <option value="">请选择通知渠道</option>
+              </select>
+            </div>
+            <div id="alert-rules-section" class="alert-rules-section">
             <div id="alert-rules-grid" class="alert-rules-grid alert-rules-grid--modal">
               <p class="form-hint">加载服务列表…</p>
+            </div>
             </div>
           </section>
 

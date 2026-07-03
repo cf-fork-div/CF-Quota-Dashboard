@@ -150,6 +150,104 @@ const OTHER_GROUPS = [
 const DEFAULT_ALERT_THRESHOLD = 80;
 
 let alertServiceGroups = [];
+let enabledNotificationChannels = [];
+
+async function fetchEnabledChannels() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/channels`);
+    const channels = await resp.json();
+    enabledNotificationChannels = (channels ?? []).filter((c) => c.enabled);
+  } catch {
+    enabledNotificationChannels = [];
+  }
+  return enabledNotificationChannels;
+}
+
+function getChannelDisplayName(account) {
+  if (account.notificationChannelInvalid) return '已失效（请重新选择）';
+  if (account.notificationChannelName) return account.notificationChannelName;
+  const hasAlerts = (account.alertRules ?? []).some((r) => r.enabled);
+  if (hasAlerts) return '未选择';
+  return '—';
+}
+
+function setAlertSectionChannelState(selectedChannelId) {
+  const noChannelsEl = document.getElementById('alert-no-channels');
+  const channelField = document.getElementById('alert-channel-field');
+  const rulesSection = document.getElementById('alert-rules-section');
+  const toolbar = document.querySelector('.alert-rules-toolbar');
+  const select = document.getElementById('notification-channel-select');
+  const hint = document.querySelector('.account-modal__alert-hint');
+
+  const hasChannels = enabledNotificationChannels.length > 0;
+
+  noChannelsEl?.classList.toggle('hidden', hasChannels);
+  channelField?.classList.toggle('hidden', !hasChannels);
+  rulesSection?.classList.toggle('alert-rules-section--disabled', !hasChannels);
+  toolbar?.classList.toggle('hidden', !hasChannels);
+  if (hint) hint.classList.toggle('hidden', !hasChannels);
+
+  if (!select) return;
+
+  if (!hasChannels) {
+    select.innerHTML = '<option value="">通知渠道未配置</option>';
+    select.disabled = true;
+    select.removeAttribute('required');
+    disableAlertRuleInputs(true);
+    return;
+  }
+
+  select.disabled = false;
+  select.innerHTML = [
+    '<option value="">请选择通知渠道</option>',
+    ...enabledNotificationChannels.map(
+      (ch) =>
+        `<option value="${ch.id}"${ch.id === selectedChannelId ? ' selected' : ''}>${ch.name} (${ch.type})</option>`,
+    ),
+  ].join('');
+
+  if (selectedChannelId && !enabledNotificationChannels.some((c) => c.id === selectedChannelId)) {
+    select.innerHTML += `<option value="${selectedChannelId}" selected disabled>已失效渠道</option>`;
+  }
+
+  disableAlertRuleInputs(false);
+  updateAlertChannelRequired();
+}
+
+function disableAlertRuleInputs(disabled) {
+  const grid = document.getElementById('alert-rules-grid');
+  if (!grid) return;
+  grid.querySelectorAll('input[name="alertService"], .alert-threshold-input').forEach((el) => {
+    el.disabled = disabled || (el.classList.contains('alert-threshold-input') && !el.closest('.alert-toggle-row--checked'));
+  });
+  document.getElementById('alert-select-all')?.toggleAttribute('disabled', disabled);
+  document.getElementById('alert-select-none')?.toggleAttribute('disabled', disabled);
+}
+
+function updateAlertChannelRequired() {
+  const select = document.getElementById('notification-channel-select');
+  const form = document.getElementById('account-form');
+  if (!select || !form || !enabledNotificationChannels.length) return;
+
+  const alertRules = readAlertFormValues();
+  const hasEnabledRules = alertRules.some((r) => r.enabled);
+  if (hasEnabledRules) {
+    select.setAttribute('required', '');
+  } else {
+    select.removeAttribute('required');
+  }
+}
+
+function bindAlertChannelField() {
+  const select = document.getElementById('notification-channel-select');
+  const grid = document.getElementById('alert-rules-grid');
+  select?.addEventListener('change', updateAlertChannelRequired);
+  grid?.addEventListener('change', (e) => {
+    if (e.target?.matches('input[name="alertService"]')) {
+      updateAlertChannelRequired();
+    }
+  });
+}
 
 async function loadAlertServiceGroups() {
   if (alertServiceGroups.length) return alertServiceGroups;
@@ -191,9 +289,12 @@ function renderAlertRulesGrid(alertRules = []) {
     return;
   }
 
+  const disabled = !enabledNotificationChannels.length;
+
   grid.innerHTML = alertServiceGroups.map((group) => {
     const state = getGroupStateFromRules(group, alertRules);
     const checkedClass = state.enabled ? ' alert-toggle-row--checked' : '';
+    const inputDisabled = disabled || !state.enabled;
     return `
       <div class="alert-toggle-row${checkedClass}" data-group-id="${group.id}">
         <span class="alert-toggle-row__name">${group.title}</span>
@@ -207,11 +308,11 @@ function renderAlertRulesGrid(alertRules = []) {
             step="1"
             value="${state.thresholdPercent}"
             aria-label="${group.title} 告警阈值"
-            ${state.enabled ? '' : 'disabled'}
+            ${inputDisabled ? 'disabled' : ''}
           />
           <span class="alert-toggle-row__unit">%</span>
           <label class="alert-toggle-row__check">
-            <input type="checkbox" name="alertService" value="${group.id}" ${state.enabled ? 'checked' : ''} />
+            <input type="checkbox" name="alertService" value="${group.id}" ${state.enabled ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
             <span class="alert-toggle-row__check-ui" aria-hidden="true"></span>
           </label>
         </div>
@@ -225,7 +326,8 @@ function renderAlertRulesGrid(alertRules = []) {
       const threshold = row?.querySelector('.alert-threshold-input');
       if (!row || !threshold) return;
       row.classList.toggle('alert-toggle-row--checked', cb.checked);
-      threshold.disabled = !cb.checked;
+      threshold.disabled = disabled || !cb.checked;
+      updateAlertChannelRequired();
     });
   });
 }
@@ -257,8 +359,10 @@ function bindAlertRulesToolbar() {
   });
 }
 
-function setAlertFormValues(alertRules) {
+function setAlertFormValues(alertRules, notificationChannelId) {
   renderAlertRulesGrid(alertRules ?? []);
+  setAlertSectionChannelState(notificationChannelId);
+  updateAlertChannelRequired();
 }
 
 function readAlertFormValues() {
@@ -842,7 +946,16 @@ function getAccountModalOverlay() {
   return document.getElementById('account-modal-overlay');
 }
 
-function openModal() {
+async function openModal(alertRules, notificationChannelId) {
+  await fetchEnabledChannels();
+  if (alertRules !== undefined || notificationChannelId !== undefined) {
+    setAlertFormValues(alertRules ?? null, notificationChannelId);
+  } else {
+    setAlertSectionChannelState(undefined);
+    renderAlertRulesGrid();
+    updateAlertChannelRequired();
+  }
+
   const overlay = getAccountModalOverlay();
   if (!overlay) return;
   overlay.classList.remove('hidden');
@@ -878,7 +991,7 @@ function clearAccountFormFields() {
     tokenInput.required = true;
     tokenInput.placeholder = 'Cloudflare API Token';
   }
-  setAlertFormValues(null);
+  setAlertFormValues(null, undefined);
 }
 
 function resetAccountForm() {
@@ -888,7 +1001,7 @@ function resetAccountForm() {
 
 function openModalAdd() {
   clearAccountFormFields();
-  openModal();
+  void openModal();
 }
 
 function openModalEdit(account) {
@@ -903,12 +1016,11 @@ function openModalEdit(account) {
   form.apiToken.value = '';
   form.apiToken.required = false;
   form.apiToken.placeholder = `留空则保留 ${account.apiToken}`;
-  setAlertFormValues(account.alertRules);
 
   const title = document.getElementById('modal-form-title');
   if (title) title.textContent = `编辑账号 · ${account.name}`;
 
-  openModal();
+  void openModal(account.alertRules, account.notificationChannelId);
 }
 
 async function verifyAccountForm() {
@@ -1041,6 +1153,8 @@ async function reorderAccounts(accountIds) {
 
 function renderAdminAccountItem(account) {
   const { enabled: alertEnabled, projects: alertProjects } = formatAlertSummary(account.alertRules);
+  const channelDisplay = getChannelDisplayName(account);
+  const channelClass = account.notificationChannelInvalid ? ' account-card__value--warn' : '';
   const toggleBtnClass = account.enabled
     ? 'account-card__btn account-card__btn--disable'
     : 'account-card__btn account-card__btn--enable';
@@ -1075,6 +1189,10 @@ function renderAdminAccountItem(account) {
           <div class="account-card__row">
             <span class="account-card__label">告警项目:</span>
             <span class="account-card__value">${alertProjects}</span>
+          </div>
+          <div class="account-card__row">
+            <span class="account-card__label">通知渠道:</span>
+            <span class="account-card__value${channelClass}">${channelDisplay}</span>
           </div>
         </div>
         <div class="account-card__footer">
@@ -1224,11 +1342,32 @@ async function submitAccountForm(e) {
   const form = e.target;
   const msg = document.getElementById('form-message');
   const alertRules = readAlertFormValues();
+  const channelSelect = form.notificationChannelId;
+  const notificationChannelId = channelSelect?.value?.trim() || undefined;
+  const hasEnabledRules = alertRules.some((r) => r.enabled);
+
+  if (hasEnabledRules && enabledNotificationChannels.length === 0) {
+    if (msg) {
+      msg.textContent = '通知渠道未配置，请先在通知渠道页面添加。';
+      msg.className = 'form-message form-message--error';
+    }
+    return;
+  }
+
+  if (hasEnabledRules && !notificationChannelId) {
+    if (msg) {
+      msg.textContent = '启用告警时必须选择通知渠道。';
+      msg.className = 'form-message form-message--error';
+    }
+    return;
+  }
+
   const payload = {
     name: form.name.value.trim(),
     accountId: form.accountId.value.trim(),
     apiToken: form.apiToken.value.trim(),
     alertRules,
+    notificationChannelId: hasEnabledRules ? notificationChannelId : undefined,
   };
 
   try {
@@ -1238,6 +1377,7 @@ async function submitAccountForm(e) {
         name: payload.name,
         accountId: payload.accountId,
         alertRules: payload.alertRules,
+        notificationChannelId: payload.notificationChannelId,
       };
       if (payload.apiToken) body.apiToken = payload.apiToken;
       resp = await authFetch(`${API_BASE}/api/accounts/${editingAccountId}`, {
@@ -1292,8 +1432,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { requirePageAuth } = await import('./auth.js');
     await requirePageAuth();
     await loadAlertServiceGroups();
+    await fetchEnabledChannels();
     renderAlertRulesGrid();
     bindAlertRulesToolbar();
+    bindAlertChannelField();
+    setAlertSectionChannelState(undefined);
     form.addEventListener('submit', submitAccountForm);
     loadAdmin();
 

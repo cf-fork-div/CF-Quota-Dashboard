@@ -243,22 +243,51 @@ export async function sendQuotaAlert(
 
   const cooldown = await getAlertCooldown(env.KV);
   const alerts = filterAlertsByCooldown(allAlerts, cooldown);
-  const message = buildAlertContent(alerts);
-  if (!message) return false;
+  if (!alerts.length) return false;
 
-  const channels = await resolveChannels(env);
-  if (!channels.length) return false;
+  const channels = await getChannels(env.KV);
+  const channelById = new Map(channels.map((c) => [c.id, c]));
+  const configByAccountId = new Map(accountConfigs.map((a) => [a.accountId, a]));
 
-  const results = await Promise.all(
-    channels.map((channel) => sendToChannel(channel, message)),
-  );
+  const alertsByChannel = new Map<string, AlertItem[]>();
 
-  const sent = results.some((r) => r.ok);
-  if (sent) {
-    await saveAlertCooldown(env.KV, applyCooldownUpdates(cooldown, alerts));
+  for (const alert of alerts) {
+    const config = configByAccountId.get(alert.accountId);
+    const channelId = config?.notificationChannelId;
+    if (!channelId) continue;
+
+    const channel = channelById.get(channelId);
+    if (!channel?.enabled) continue;
+
+    const list = alertsByChannel.get(channelId) ?? [];
+    list.push(alert);
+    alertsByChannel.set(channelId, list);
   }
 
-  return sent;
+  if (!alertsByChannel.size) return false;
+
+  let anySent = false;
+  const sentAlerts: AlertItem[] = [];
+
+  for (const [channelId, channelAlerts] of alertsByChannel) {
+    const channel = channelById.get(channelId);
+    if (!channel) continue;
+
+    const message = buildAlertContent(channelAlerts);
+    if (!message) continue;
+
+    const result = await sendToChannel(channel, message);
+    if (result.ok) {
+      anySent = true;
+      sentAlerts.push(...channelAlerts);
+    }
+  }
+
+  if (anySent) {
+    await saveAlertCooldown(env.KV, applyCooldownUpdates(cooldown, sentAlerts));
+  }
+
+  return anySent;
 }
 
 export interface ChannelTestOutcome {

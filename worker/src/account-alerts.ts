@@ -14,6 +14,8 @@ import type {
 
   AlertItem,
 
+  NotificationChannel,
+
 } from './types';
 
 
@@ -356,6 +358,76 @@ export function applyCooldownUpdates(
   }
 
   return next;
+
+}
+
+
+
+export type AccountAlertValidationResult =
+
+  | { ok: true; notificationChannelId?: string }
+
+  | { ok: false; error: string };
+
+
+
+export function validateAccountAlertConfig(
+
+  alertRules: AccountAlertRule[] | undefined,
+
+  notificationChannelId: string | undefined,
+
+  channels: NotificationChannel[],
+
+  defaultThreshold = DEFAULT_ALERT_THRESHOLD_PERCENT,
+
+): AccountAlertValidationResult {
+
+  const normalized = normalizeAlertRules(alertRules, undefined, defaultThreshold);
+
+  const hasEnabledRules = normalized.some((r) => r.enabled);
+
+
+
+  if (!hasEnabledRules) {
+
+    const trimmed = notificationChannelId?.trim();
+
+    return { ok: true, notificationChannelId: trimmed || undefined };
+
+  }
+
+
+
+  const enabledChannels = channels.filter((c) => c.enabled);
+
+  if (!enabledChannels.length) {
+
+    return { ok: false, error: '通知渠道未配置，无法启用告警' };
+
+  }
+
+
+
+  const channelId = notificationChannelId?.trim();
+
+  if (!channelId) {
+
+    return { ok: false, error: '启用告警时必须选择通知渠道' };
+
+  }
+
+
+
+  if (!enabledChannels.some((c) => c.id === channelId)) {
+
+    return { ok: false, error: '所选通知渠道不存在或未启用' };
+
+  }
+
+
+
+  return { ok: true, notificationChannelId: channelId };
 
 }
 

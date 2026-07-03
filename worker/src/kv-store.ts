@@ -154,7 +154,7 @@ export async function reorderAccounts(
 
 type AccountUpdates = Partial<
 
-  Pick<AccountConfig, 'name' | 'accountId' | 'apiToken' | 'enabled' | 'alertRules'>
+  Pick<AccountConfig, 'name' | 'accountId' | 'apiToken' | 'enabled' | 'alertRules' | 'notificationChannelId'>
 
 >;
 
@@ -208,6 +208,16 @@ export async function updateAccount(
 
 
 
+  let notificationChannelId = existing.notificationChannelId;
+
+  if (updates.notificationChannelId !== undefined) {
+
+    notificationChannelId = updates.notificationChannelId?.trim() || undefined;
+
+  }
+
+
+
   accounts[index] = {
 
     ...existing,
@@ -219,6 +229,8 @@ export async function updateAccount(
     apiToken,
 
     enabled: updates.enabled ?? existing.enabled,
+
+    notificationChannelId,
 
     alertRules,
 
@@ -260,7 +272,15 @@ export async function saveSnapshot(
 
 
 
-export function maskAccount(account: AccountConfig, defaultThreshold = 80): PublicAccount {
+export function maskAccount(
+
+  account: AccountConfig,
+
+  defaultThreshold = 80,
+
+  channels?: NotificationChannel[],
+
+): PublicAccount {
 
   const token = account.apiToken || '';
 
@@ -274,6 +294,32 @@ export function maskAccount(account: AccountConfig, defaultThreshold = 80): Publ
 
   const alertRules = normalizeAlertRules(account.alertRules, account.alerts, defaultThreshold);
 
+  let notificationChannelId = account.notificationChannelId;
+
+  let notificationChannelName: string | undefined;
+
+  let notificationChannelInvalid = false;
+
+  if (notificationChannelId && channels) {
+
+    const channel = channels.find((c) => c.id === notificationChannelId);
+
+    if (channel?.enabled) {
+
+      notificationChannelName = channel.name;
+
+    } else {
+
+      notificationChannelInvalid = true;
+
+      notificationChannelId = undefined;
+
+    }
+
+  }
+
+
+
   return {
 
     id: account.id,
@@ -285,6 +331,12 @@ export function maskAccount(account: AccountConfig, defaultThreshold = 80): Publ
     enabled: account.enabled,
 
     apiToken: masked,
+
+    notificationChannelId,
+
+    notificationChannelName,
+
+    notificationChannelInvalid: notificationChannelInvalid || undefined,
 
     alertRules: alertRules.length ? alertRules : undefined,
 
@@ -471,6 +523,24 @@ export async function deleteChannel(
   if (next.length === channels.length) return false;
 
   await saveChannels(kv, next);
+
+  const accounts = await getAccounts(kv);
+
+  let accountsChanged = false;
+
+  for (const account of accounts) {
+
+    if (account.notificationChannelId === id) {
+
+      account.notificationChannelId = undefined;
+
+      accountsChanged = true;
+
+    }
+
+  }
+
+  if (accountsChanged) await saveAccounts(kv, accounts);
 
   return true;
 
