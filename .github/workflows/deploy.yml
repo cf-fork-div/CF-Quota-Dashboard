@@ -35,15 +35,33 @@ jobs:
           if [ -n "$KV_NAMESPACE_ID" ]; then
             ID="$KV_NAMESPACE_ID"
           else
-            ID=$(npx wrangler kv namespace list --json | node -e "
-              const list = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-              const ns = list.find((n) => n.title === 'KV');
+            LIST=$(curl -sf \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/storage/kv/namespaces?per_page=100" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json")
+            ID=$(node -e "
+              const data = JSON.parse(process.argv[1]);
+              if (!data.success) {
+                console.error(JSON.stringify(data.errors ?? data));
+                process.exit(1);
+              }
+              const ns = data.result.find((n) => n.title === 'KV');
               process.stdout.write(ns?.id ?? '');
-            ")
+            " "$LIST")
             if [ -z "$ID" ]; then
-              ID=$(npx wrangler kv namespace create KV --json | node -e "
-                process.stdout.write(JSON.parse(require('fs').readFileSync(0, 'utf8')).id);
-              ")
+              CREATE=$(curl -sf -X POST \
+                "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/storage/kv/namespaces" \
+                -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"title":"KV"}')
+              ID=$(node -e "
+                const data = JSON.parse(process.argv[1]);
+                if (!data.success) {
+                  console.error(JSON.stringify(data.errors ?? data));
+                  process.exit(1);
+                }
+                process.stdout.write(data.result.id);
+              " "$CREATE")
               echo "Created KV namespace: $ID"
             fi
           fi
