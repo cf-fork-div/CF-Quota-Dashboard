@@ -14,7 +14,11 @@ const REFRESH_INTERVAL_LABELS = {
 let dashboardConfig = { refreshIntervalMinutes: 20 };
 let autoRefreshTimer = null;
 let autoRefreshHintTimer = null;
+let backgroundRefreshPollTimer = null;
+let lastKnownSnapshotUpdated = null;
 let nextAutoRefreshAt = null;
+
+const BACKGROUND_REFRESH_POLL_MS = 3000;
 
 const LABEL_ZH = {
   workers_requests: 'Workers 请求数',
@@ -787,6 +791,96 @@ function applyHeroGradients(root) {
   });
 }
 
+function clearBackgroundRefreshPoll() {
+  if (backgroundRefreshPollTimer) {
+    clearInterval(backgroundRefreshPollTimer);
+    backgroundRefreshPollTimer = null;
+  }
+}
+
+function updateBackgroundRefreshHint(data) {
+  const statsEl = document.getElementById('refresh-stats');
+  if (!statsEl) return;
+
+  const baseText = statsEl.dataset.baseText ?? '';
+  if (data.refreshing || data.stale) {
+    statsEl.textContent = `${baseText} · 后台刷新中…`;
+    return;
+  }
+  statsEl.textContent = baseText;
+}
+
+function startBackgroundRefreshPoll(previousLastUpdated) {
+  clearBackgroundRefreshPoll();
+  backgroundRefreshPollTimer = setInterval(async () => {
+    try {
+      const data = await fetchSnapshot();
+      renderDashboardFromSnapshot(data);
+      if (data.lastUpdated && !data.refreshing) {
+        lastKnownSnapshotUpdated = data.lastUpdated;
+      }
+      const updated =
+        data.lastUpdated &&
+        data.lastUpdated !== previousLastUpdated &&
+        !data.refreshing;
+      if (updated || (!data.refreshing && !data.stale)) {
+        clearBackgroundRefreshPoll();
+      }
+    } catch {
+      // keep polling on transient errors
+    }
+  }, BACKGROUND_REFRESH_POLL_MS);
+}
+
+function renderDashboardFromSnapshot(data) {
+  const updated = document.getElementById('last-updated');
+  const grid = document.getElementById('accounts-grid');
+  const statsEl = document.getElementById('refresh-stats');
+
+  if (updated) {
+    updated.textContent = data.lastUpdated
+      ? new Date(data.lastUpdated).toLocaleString()
+      : '从未更新';
+  }
+
+  let statsText = '';
+  if (data.refreshStats) {
+    const s = data.refreshStats;
+    statsText = ` · 已刷新 ${s.refreshed}/${s.refreshed + s.cached + s.failed}`;
+  }
+  if (statsEl) {
+    statsEl.dataset.baseText = statsText;
+    updateBackgroundRefreshHint(data);
+  }
+
+  if (!grid) return;
+
+  if (!data.accounts?.length) {
+    grid.classList.remove('accounts-grid--single');
+    grid.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state__icon">📊</div>
+        <p>暂无配额数据。</p>
+        <p><a href="/admin">添加账号</a> 或点击「手动刷新」。</p>
+      </div>`;
+    return;
+  }
+
+  grid.classList.toggle('accounts-grid--single', data.accounts.length === 1);
+
+  const summary = aggregateMetrics(data.accounts);
+  const statusEl = document.getElementById('dashboard-status');
+  const headerHintEl = document.getElementById('dashboard-header-hint');
+  if (statusEl) statusEl.innerHTML = renderStatusBadge(summary);
+  if (headerHintEl) headerHintEl.innerHTML = renderDashboardHeader(summary);
+
+  const alertsBlock = renderAlertsBlock(summary.alerts);
+  const accountCards = data.accounts.map(renderAccountCard).join('');
+
+  grid.innerHTML = alertsBlock + accountCards;
+  applyHeroGradients(grid);
+}
+
 async function fetchSnapshot() {
   const resp = await fetch(`${API_BASE}/api/snapshot`);
   return resp.json();
@@ -836,6 +930,7 @@ function clearAutoRefreshTimers() {
     clearInterval(autoRefreshHintTimer);
     autoRefreshHintTimer = null;
   }
+  clearBackgroundRefreshPoll();
 }
 
 async function runAutoRefreshCycle() {
@@ -896,48 +991,31 @@ async function refreshQuotas() {
 }
 
 async function loadDashboard() {
-  const data = await fetchSnapshot();
-  const updated = document.getElementById('last-updated');
   const grid = document.getElementById('accounts-grid');
-  const statsEl = document.getElementById('refresh-stats');
+  const hasDisplayedData = Boolean(grid?.querySelector('.glass-card--account'));
 
-  if (updated) {
-    updated.textContent = data.lastUpdated
-      ? new Date(data.lastUpdated).toLocaleString()
-      : '从未更新';
+  try {
+    const data = await fetchSnapshot();
+    renderDashboardFromSnapshot(data);
+
+    if (data.refreshing || data.stale) {
+      startBackgroundRefreshPoll(lastKnownSnapshotUpdated ?? data.lastUpdated);
+    } else {
+      clearBackgroundRefreshPoll();
+    }
+
+    if (data.lastUpdated) {
+      lastKnownSnapshotUpdated = data.lastUpdated;
+    }
+  } catch (err) {
+    if (!hasDisplayedData && grid) {
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state__icon">⚠️</div>
+          <p>加载失败：${err.message || '未知错误'}</p>
+        </div>`;
+    }
   }
-
-  if (statsEl && data.refreshStats) {
-    const s = data.refreshStats;
-    statsEl.textContent = ` · 已刷新 ${s.refreshed}/${s.refreshed + s.cached + s.failed}`;
-  }
-
-  if (!grid) return;
-
-  if (!data.accounts?.length) {
-    grid.classList.remove('accounts-grid--single');
-    grid.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-state__icon">📊</div>
-        <p>暂无配额数据。</p>
-        <p><a href="/admin">添加账号</a> 或点击「手动刷新」。</p>
-      </div>`;
-    return;
-  }
-
-  grid.classList.toggle('accounts-grid--single', data.accounts.length === 1);
-
-  const summary = aggregateMetrics(data.accounts);
-  const statusEl = document.getElementById('dashboard-status');
-  const headerHintEl = document.getElementById('dashboard-header-hint');
-  if (statusEl) statusEl.innerHTML = renderStatusBadge(summary);
-  if (headerHintEl) headerHintEl.innerHTML = renderDashboardHeader(summary);
-
-  const alertsBlock = renderAlertsBlock(summary.alerts);
-  const accountCards = data.accounts.map(renderAccountCard).join('');
-
-  grid.innerHTML = alertsBlock + accountCards;
-  applyHeroGradients(grid);
 }
 
 let editingAccountId = null;

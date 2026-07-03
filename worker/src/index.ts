@@ -9,6 +9,7 @@ import type {
   NotificationChannel,
   QuotaFetchResult,
   RefreshStats,
+  SnapshotResponse,
 } from './types';
 import { ALERT_SERVICE_GROUPS, normalizeAlertRules, validateAccountAlertConfig } from './account-alerts';
 import {
@@ -73,16 +74,34 @@ function isSnapshotStale(lastUpdated: string | null | undefined, intervalMinutes
 
 async function getSnapshotWithOptionalRefresh(
   env: Env,
+  ctx: { waitUntil: (promise: Promise<unknown>) => void },
   options?: { force?: boolean },
-): Promise<QuotaFetchResult | { lastUpdated: string | null; accounts: AccountSnapshot[] }> {
+): Promise<SnapshotResponse> {
   const snapshot = await getSnapshot(env.KV);
   const intervalMinutes = await getCheckIntervalMinutes(env);
+  const stale = isSnapshotStale(snapshot?.lastUpdated, intervalMinutes);
+  const hasCachedData = Boolean(snapshot?.lastUpdated && snapshot.accounts?.length);
 
-  if (options?.force || isSnapshotStale(snapshot?.lastUpdated, intervalMinutes)) {
-    return runQuotaFetch(env, { force: true });
+  if (options?.force) {
+    const result = await runQuotaFetch(env, { force: true });
+    return { ...result, stale: false, refreshing: false };
   }
 
-  return snapshot ?? { lastUpdated: null, accounts: [] };
+  if (hasCachedData) {
+    if (stale) {
+      ctx.waitUntil(runQuotaFetch(env, { force: true }));
+      return { ...snapshot!, stale: true, refreshing: true };
+    }
+    return { ...snapshot!, stale: false, refreshing: false };
+  }
+
+  const enabledAccounts = (await getAccounts(env.KV)).filter((a) => a.enabled);
+  if (enabledAccounts.length === 0) {
+    return { lastUpdated: snapshot?.lastUpdated ?? null, accounts: [], stale: true, refreshing: false };
+  }
+
+  const result = await runQuotaFetch(env, { force: true });
+  return { ...result, stale: false, refreshing: false };
 }
 
 function scheduleQuotaRefresh(
@@ -156,7 +175,7 @@ app.get('/api/public/snapshot', async (c) => {
     return c.json({ error: 'Forbidden' }, 403);
   }
 
-  const snapshot = await getSnapshotWithOptionalRefresh(c.env);
+  const snapshot = await getSnapshotWithOptionalRefresh(c.env, c.executionCtx);
   const accounts = await getAccounts(c.env.KV);
   if (snapshot.accounts?.length && accounts.length) {
     snapshot.accounts = sortSnapshotsByAccountOrder(snapshot.accounts, accounts);
@@ -342,7 +361,7 @@ app.delete('/api/accounts/:id', requireAuth, async (c) => {
 });
 
 app.get('/api/snapshot', async (c) => {
-  const snapshot = await getSnapshotWithOptionalRefresh(c.env);
+  const snapshot = await getSnapshotWithOptionalRefresh(c.env, c.executionCtx);
   const accounts = await getAccounts(c.env.KV);
   if (snapshot.accounts?.length && accounts.length) {
     snapshot.accounts = sortSnapshotsByAccountOrder(snapshot.accounts, accounts);

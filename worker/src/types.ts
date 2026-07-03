@@ -151,6 +151,15 @@ export interface QuotaFetchResult extends QuotaSnapshot {
   refreshStats: RefreshStats;
 }
 
+/** GET /api/snapshot response — may include stale-while-revalidate flags */
+export interface SnapshotResponse extends Omit<QuotaSnapshot, 'lastUpdated'> {
+  lastUpdated: string | null;
+  stale: boolean;
+  refreshing?: boolean;
+  refreshStats?: RefreshStats;
+  alerted?: boolean;
+}
+
 export interface PublicAccount {
   id: string;
   name: string;
