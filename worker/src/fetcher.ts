@@ -120,11 +120,11 @@ interface ViewerAccount {
     sum?: { queriedVectorDimensions?: number };
   }>;
   vectorizeV2StorageAdaptiveGroups?: Array<{
-    max?: { storedVectorDimensions?: number; storedDimensions?: number };
+    max?: { storedVectorDimensions?: number };
     dimensions?: { indexName?: string; datetime?: string };
   }>;
   vectorizeStorageAdaptiveGroups?: Array<{
-    max?: { storedDimensions?: number };
+    max?: { storedVectorDimensions?: number };
     dimensions?: { indexName?: string; datetime?: string };
   }>;
   workersBuildsBuildMinutesAdaptiveGroups?: Array<{ sum?: { buildMinutes?: number } }>;
@@ -205,7 +205,7 @@ async function fetchCoreMetrics(
     viewer {
       accounts(filter: { accountTag: $accountTag }) {
         workersInvocationsAdaptive(limit: 1, filter: { datetime_geq: $dayStart, datetime_leq: $dayEnd }) {
-          sum { requests cpuTimeUs }
+          sum { requests }
         }
         queueMessageOperationsAdaptiveGroups(limit: 10000, filter: { datetime_geq: $dayStart, datetime_leq: $dayEnd }) {
           sum { billableOperations }
@@ -224,9 +224,6 @@ async function fetchCoreMetrics(
         }
         workersAnalyticsEngineAdaptiveGroups(limit: 10000, filter: { datetime_geq: $dayStart, datetime_leq: $dayEnd }) {
           count
-        }
-        logExplorerIngestionAdaptiveGroups(limit: 10000, filter: { datetime_geq: $dayStart, datetime_leq: $dayEnd }) {
-          sum { totalBytes }
         }
         workersBuildsBuildMinutesAdaptiveGroups(limit: 10000, filter: { datetime_geq: $monthStart, datetime_leq: $monthEnd }) {
           sum { buildMinutes }
@@ -568,7 +565,7 @@ async function fetchVectorizeQueried(
 
 function sumVectorizeStored(
   groups: Array<{
-    max?: { storedVectorDimensions?: number; storedDimensions?: number };
+    max?: { storedVectorDimensions?: number };
     dimensions?: { indexName?: string; datetime?: string };
   }> | undefined,
 ): number {
@@ -576,13 +573,40 @@ function sumVectorizeStored(
   for (const g of groups ?? []) {
     const indexName = g.dimensions?.indexName ?? '';
     const date = g.dimensions?.datetime ?? '';
-    const dims = g.max?.storedVectorDimensions ?? g.max?.storedDimensions ?? 0;
+    const dims = g.max?.storedVectorDimensions ?? 0;
     const prev = latestByIndex.get(indexName);
     if (!prev || date > prev.date) {
       latestByIndex.set(indexName, { dims, date });
     }
   }
   return [...latestByIndex.values()].reduce((t, v) => t + v.dims, 0);
+}
+
+interface VectorizeIndexSummary {
+  name: string;
+}
+
+interface VectorizeIndexInfo {
+  vectorCount?: number;
+  config?: { dimensions?: number };
+}
+
+async function fetchVectorizeStoredRest(token: string, accountId: string): Promise<number> {
+  const list = await restRequestRaw<VectorizeIndexSummary[]>(
+    token,
+    `/accounts/${accountId}/vectorize/v2/indexes`,
+  );
+  let total = 0;
+  for (const index of list.result ?? []) {
+    const info = await restRequestRaw<VectorizeIndexInfo>(
+      token,
+      `/accounts/${accountId}/vectorize/v2/indexes/${encodeURIComponent(index.name)}`,
+    );
+    const count = info.result?.vectorCount ?? 0;
+    const dims = info.result?.config?.dimensions ?? 0;
+    total += count * dims;
+  }
+  return total;
 }
 
 async function fetchVectorizeStored(
@@ -599,7 +623,7 @@ async function fetchVectorizeStored(
           filter: { datetime_geq: $monthStart, datetime_leq: $now },
           orderBy: [datetime_DESC]
         ) {
-          max { storedVectorDimensions storedDimensions }
+          max { storedVectorDimensions }
           dimensions { indexName datetime }
         }
       }
@@ -619,6 +643,13 @@ async function fetchVectorizeStored(
     return { ok: true, value: sumVectorizeStored(acc.vectorizeV2StorageAdaptiveGroups) };
   }
 
+  const restResult = await safeQuery('vectorize-stored', () =>
+    fetchVectorizeStoredRest(token, accountId),
+  );
+  if (restResult.ok) {
+    return { ok: true, value: restResult.data };
+  }
+
   const v1Query = `query VectorizeStoredV1($accountTag: String!, $monthStart: Time!, $now: Time!) {
     viewer {
       accounts(filter: { accountTag: $accountTag }) {
@@ -627,7 +658,7 @@ async function fetchVectorizeStored(
           filter: { datetime_geq: $monthStart, datetime_leq: $now },
           orderBy: [datetime_DESC]
         ) {
-          max { storedDimensions }
+          max { storedVectorDimensions }
           dimensions { indexName datetime }
         }
       }
@@ -648,7 +679,7 @@ async function fetchVectorizeStored(
   const latestByIndex = new Map<string, number>();
   for (const g of acc.vectorizeStorageAdaptiveGroups ?? []) {
     const indexName = g.dimensions?.indexName ?? '';
-    const dims = g.max?.storedDimensions ?? 0;
+    const dims = g.max?.storedVectorDimensions ?? 0;
     latestByIndex.set(indexName, dims);
   }
   return {
@@ -794,14 +825,10 @@ async function fetchAllMetrics(
     (g) => g.sum?.totalSessionDurationMs,
   );
   const analyticsWrites = sumGroups(acc.workersAnalyticsEngineAdaptiveGroups, (g) => g.count);
-  const logsEvents = 0;
-  const logsEventsOk = false;
-  const logsBytes = sumGroups(acc.logExplorerIngestionAdaptiveGroups, (g) => g.sum?.totalBytes);
   const workersBuildMinutes = sumGroups(
     acc.workersBuildsBuildMinutesAdaptiveGroups,
     (g) => g.sum?.buildMinutes,
   );
-  const workersCpuUs = acc.workersInvocationsAdaptive?.[0]?.sum?.cpuTimeUs ?? 0;
   const workersBuildsOk = Array.isArray(acc.workersBuildsBuildMinutesAdaptiveGroups);
 
   const doRequests = sumGroups(
@@ -908,13 +935,6 @@ async function fetchAllMetrics(
         ? undefined
         : 'Workers Builds minutes unavailable via GraphQL for this account',
     ),
-    workers_build_concurrent: buildMetric(
-      'workers_build_concurrent',
-      0,
-      limits.workers_build_concurrent,
-      false,
-      'No API for concurrent build slots; Free plan limit is 1 slot',
-    ),
     pages_requests: buildMetric('pages_requests', pagesRequests, limits.pages_requests),
     ai_neurons: buildMetric('ai_neurons', aiNeurons, limits.ai_neurons),
     queues_ops: buildMetric('queues_ops', queuesOps, limits.queues_ops),
@@ -944,28 +964,7 @@ async function fetchAllMetrics(
     durable_objects_rows_written: buildMetric('durable_objects_rows_written', doRowsWritten, limits.durable_objects_rows_written),
     durable_objects_sql_storage_gb: buildMetric('durable_objects_sql_storage_gb', doSqlStorage, limits.durable_objects_sql_storage_gb),
     browser_minutes: buildMetric('browser_minutes', browserMs / 60000, limits.browser_minutes),
-    workers_cpu_ms: buildMetric(
-      'workers_cpu_ms',
-      workersCpuUs / 1000,
-      limits.workers_cpu_ms,
-      false,
-      'Free tier caps 10ms CPU per request, not a daily total; API exposes aggregate cpuTimeUs only',
-    ),
     analytics_engine_writes: buildMetric('analytics_engine_writes', analyticsWrites, limits.analytics_engine_writes),
-    workers_logs_events: buildMetric(
-      'workers_logs_events',
-      logsEvents,
-      limits.workers_logs_events,
-      logsEventsOk,
-      'Log Explorer event count not exposed via GraphQL; Free limit 200k events/day',
-    ),
-    workers_logs_bytes: buildMetric(
-      'workers_logs_bytes',
-      logsBytes,
-      limits.workers_logs_bytes,
-      false,
-      'Bytes only; see workers_logs_events for event count when available',
-    ),
   };
 
   return { quotas, partialErrors };

@@ -6,8 +6,8 @@ const GROUPS = [
   {
     title: 'Compute & Runtime',
     keys: [
-      'workers_requests', 'pages_requests', 'workers_build_minutes', 'workers_build_concurrent',
-      'workers_cpu_ms', 'pages_builds', 'workflows_invocations', 'browser_minutes', 'ai_neurons',
+      'workers_requests', 'pages_requests', 'workers_build_minutes',
+      'pages_builds', 'workflows_invocations', 'browser_minutes', 'ai_neurons',
     ],
   },
   {
@@ -25,8 +25,8 @@ const GROUPS = [
     keys: ['queues_ops', 'hyperdrive_queries', 'vectorize_queried_dims', 'vectorize_stored_dims'],
   },
   {
-    title: 'Analytics & Logs',
-    keys: ['analytics_engine_writes', 'workers_logs_events', 'workers_logs_bytes'],
+    title: 'Analytics',
+    keys: ['analytics_engine_writes'],
   },
 ];
 
