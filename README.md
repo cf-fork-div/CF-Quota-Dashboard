@@ -345,7 +345,7 @@ curl.exe -X POST "https://your-worker.workers.dev/cron/fetch" -H "Cookie: cfqd_s
 | Pages | 月构建、Functions 日请求 | REST `/pages/projects` + `/deployments`；GraphQL `pagesFunctionsInvocationsAdaptiveGroups` |
 | Workers AI | Neurons | `aiInferenceAdaptiveGroups` |
 | Queues | 计费操作 | `queueMessageOperationsAdaptiveGroups` |
-| Vectorize | 查询/存储维度 | `vectorizeQueriesAdaptiveGroups`、`vectorizeStorageAdaptiveGroups` |
+| Vectorize | 查询/存储维度 | `vectorizeV2QueriesAdaptiveGroups`（`sum { queriedVectorDimensions }`）、`vectorizeV2StorageAdaptiveGroups`（`max { storedVectorDimensions }`）；V1 回退 `vectorizeQueriesAdaptiveGroups` / `vectorizeStorageAdaptiveGroups` |
 | Hyperdrive | 查询 | `hyperdriveQueriesAdaptiveGroups` |
 | Workflows | 调用 | `workflowsAdaptiveGroups` |
 | Durable Objects | 请求、时长、读写、SQL 存储 | `durableObjects*Groups` |
@@ -366,7 +366,7 @@ curl.exe -X POST "https://your-worker.workers.dev/cron/fetch" -H "Cookie: cfqd_s
 
 为**被监控账号**创建 **只读** Token，建议权限：
 
-- Account Analytics: Read
+- Account Analytics: Read（含 Vectorize GraphQL 用量；**必需**）
 - Cloudflare Pages: Read
 - Workers Scripts: Read
 - Workers KV Storage: Read
@@ -374,6 +374,7 @@ curl.exe -X POST "https://your-worker.workers.dev/cron/fetch" -H "Cookie: cfqd_s
 - D1: Read
 - Queues: Read
 - Hyperdrive: Read（若使用）
+- Vectorize: Read（可选；仅在使用 REST 列举索引时，GraphQL 方式不需要）
 - Account Settings: Read（可选，用于 Verify 显示账号名）
 
 ## 安全说明
