@@ -219,7 +219,7 @@ async function fetchCoreMetrics(
         workflowsAdaptiveGroups(limit: 10000, filter: { datetime_geq: $dayStart, datetime_leq: $dayEnd }) {
           count
         }
-        browserRenderingBrowserTimeUsageAdaptiveGroups(limit: 10000, filter: { datetime_geq: $monthStart, datetime_leq: $monthEnd }) {
+        browserRenderingBrowserTimeUsageAdaptiveGroups(limit: 10000, filter: { datetime_geq: $dayStart, datetime_leq: $dayEnd }) {
           sum { totalSessionDurationMs }
         }
         workersAnalyticsEngineAdaptiveGroups(limit: 10000, filter: { datetime_geq: $dayStart, datetime_leq: $dayEnd }) {

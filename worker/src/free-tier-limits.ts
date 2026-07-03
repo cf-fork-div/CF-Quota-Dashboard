@@ -165,8 +165,8 @@ export const DEFAULT_FREE_TIER_LIMITS: FreeTierLimitsConfig = {
     label: 'DO SQL Storage',
   },
   browser_minutes: {
-    limit: 300,
-    period: 'monthly',
+    limit: 10,
+    period: 'daily',
     unit: 'minutes',
     label: 'Browser Run',
   },
