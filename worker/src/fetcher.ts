@@ -1,4 +1,11 @@
-import type { AccountSnapshot, FetchResult, FreeTierLimitsConfig, QuotasMap } from './types';
+import type {
+  AccountSnapshot,
+  FetchResult,
+  FreeTierLimitsConfig,
+  QuotasMap,
+  ServiceActivationStatus,
+  ServiceStatusMap,
+} from './types';
 import { buildMetric } from './calculator';
 import { resolveFreeTierLimits } from './free-tier-limits';
 
@@ -6,7 +13,7 @@ const GRAPHQL_URL = 'https://api.cloudflare.com/client/v4/graphql';
 const REST_BASE = 'https://api.cloudflare.com/client/v4';
 
 /** Estimated external subrequests per account (GraphQL batches + REST). */
-export const SUBREQUESTS_PER_ACCOUNT = 7;
+export const SUBREQUESTS_PER_ACCOUNT = 8;
 
 function formatUtcDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -65,11 +72,16 @@ async function safeQuery<T>(
   }
 }
 
+interface CfApiError {
+  code?: number;
+  message?: string;
+}
+
 interface CfApiResponse<T> {
   success?: boolean;
   result?: T;
   result_info?: { total_pages?: number; page?: number; total_count?: number; count?: number };
-  errors?: unknown[];
+  errors?: CfApiError[];
 }
 
 async function restRequestRaw<T>(token: string, path: string): Promise<CfApiResponse<T>> {
@@ -81,6 +93,46 @@ async function restRequestRaw<T>(token: string, path: string): Promise<CfApiResp
     throw new Error(json.errors ? JSON.stringify(json.errors) : `REST ${resp.status}`);
   }
   return json;
+}
+
+async function restRequestSafe<T>(
+  token: string,
+  path: string,
+): Promise<
+  | { ok: true; data: CfApiResponse<T> }
+  | { ok: false; status: number; errors: CfApiError[] }
+> {
+  const resp = await fetch(`${REST_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const json = (await resp.json()) as CfApiResponse<T>;
+  if (!resp.ok || json.success === false) {
+    return { ok: false, status: resp.status, errors: json.errors ?? [] };
+  }
+  return { ok: true, data: json };
+}
+
+function isNotEntitledError(errors: CfApiError[]): boolean {
+  return errors.some((e) => {
+    if (e.code === 10042 || e.code === 1005) return true;
+    const msg = (e.message ?? '').toLowerCase();
+    return (
+      msg.includes('not entitled')
+      || msg.includes('not_entitled')
+      || msg.includes('enable through the cloudflare dashboard')
+      || msg.includes('please enable r2')
+    );
+  });
+}
+
+async function fetchR2ActivationStatus(
+  token: string,
+  accountId: string,
+): Promise<ServiceActivationStatus> {
+  const result = await restRequestSafe<unknown[]>(token, `/accounts/${accountId}/r2/buckets`);
+  if (result.ok) return 'activated';
+  if (isNotEntitledError(result.errors)) return 'not_activated';
+  return 'unknown';
 }
 
 interface ViewerAccount {
@@ -892,7 +944,7 @@ async function fetchAllMetrics(
   token: string,
   accountId: string,
   limits: FreeTierLimitsConfig,
-): Promise<{ quotas: QuotasMap; partialErrors: string[] }> {
+): Promise<{ quotas: QuotasMap; partialErrors: string[]; serviceStatus: ServiceStatusMap }> {
   const ranges = getUtcRanges();
   const partialErrors: string[] = [];
 
@@ -911,6 +963,7 @@ async function fetchAllMetrics(
   const d1Result = await fetchD1Metrics(token, accountId, ranges.day, ranges.month);
   const d1DatabasesResult = await fetchD1DatabaseCount(token, accountId);
   const kvResult = await fetchKvMetrics(token, accountId, ranges.dayDate, ranges.monthDate);
+  const r2Activation = await fetchR2ActivationStatus(token, accountId);
   const r2Result = await fetchR2Metrics(token, accountId, ranges.month);
   const vectorizeResult = await fetchVectorizeMetrics(token, accountId, ranges.month.start, nowIso);
 
@@ -1094,7 +1147,11 @@ async function fetchAllMetrics(
     analytics_engine_writes: buildMetric('analytics_engine_writes', analyticsWrites, limits.analytics_engine_writes),
   };
 
-  return { quotas, partialErrors };
+  return {
+    quotas,
+    partialErrors,
+    serviceStatus: { r2: r2Activation },
+  };
 }
 
 export async function fetchAccountQuotas(
@@ -1105,7 +1162,7 @@ export async function fetchAccountQuotas(
 ): Promise<AccountSnapshot> {
   const limits = resolveFreeTierLimits(limitsJson);
   try {
-    const { quotas, partialErrors } = await fetchAllMetrics(token, accountId, limits);
+    const { quotas, partialErrors, serviceStatus } = await fetchAllMetrics(token, accountId, limits);
     const hasAvailable = Object.values(quotas).some((q) => q.available);
     return {
       accountId,
@@ -1113,6 +1170,7 @@ export async function fetchAccountQuotas(
       status: hasAvailable ? 'ok' : 'error',
       error: partialErrors.length ? partialErrors.join('; ') : undefined,
       quotas,
+      serviceStatus,
       lastCheckTime: new Date().toISOString(),
     };
   } catch (err) {

@@ -66,6 +66,15 @@ const SERVICE_GROUPS = [
   },
 ];
 
+const OVERVIEW_SUMMARY_KEYS = [
+  'workers_build_minutes',
+  'pages_builds',
+  'd1_reads',
+  'kv_reads',
+  'r2_storage_gb',
+  'ai_neurons',
+];
+
 const OTHER_GROUPS = [
   {
     title: '计算与运行时',
@@ -86,15 +95,6 @@ const OTHER_GROUPS = [
     title: '分析',
     keys: ['analytics_engine_writes'],
   },
-];
-
-const SUMMARY_OTHER_KEYS = [
-  'workers_build_minutes',
-  'pages_builds',
-  'd1_reads',
-  'kv_reads',
-  'r2_storage_gb',
-  'ai_neurons',
 ];
 
 function getLabelZh(key, metric) {
@@ -155,18 +155,18 @@ function formatQuotaMeta(metric) {
   return `${used} / ${limit} · ${metric.pct}% · ${period}`;
 }
 
-function renderHeroSection(used, limit, pct, compact = false) {
+function renderHeroSection(used, limit, pct) {
   const width = Math.min(100, pct);
   return `
     <div class="hero-section" data-hero-pct="${pct}">
       <div class="hero-section__header">
-        <span class="hero-section__label">${compact ? '请求使用情况' : '总请求占比'}</span>
+        <span class="hero-section__label">总请求占比</span>
         <span class="hero-section__pct">${pct}%</span>
       </div>
       <div class="progress-track progress-track--hero">
         <div class="progress-bar-gradient" style="width:${width}%"></div>
       </div>
-      <p class="hero-section__detail">${used.toLocaleString()} / ${limit.toLocaleString()} 总计请求</p>
+      <p class="hero-section__detail">${used.toLocaleString()} / ${limit.toLocaleString()} 请求次数</p>
     </div>
   `;
 }
@@ -177,14 +177,14 @@ function renderMiniCards(workersUsed, pagesUsed) {
       <div class="mini-card">
         <span class="mini-card__icon">🔶</span>
         <div class="mini-card__info">
-          <span class="mini-card__label">Workers 请求数</span>
+          <span class="mini-card__label">Workers</span>
           <span class="mini-card__value">${workersUsed.toLocaleString()}</span>
         </div>
       </div>
       <div class="mini-card">
         <span class="mini-card__icon">⚡</span>
         <div class="mini-card__info">
-          <span class="mini-card__label">Pages 请求</span>
+          <span class="mini-card__label">Pages</span>
           <span class="mini-card__value">${pagesUsed.toLocaleString()}</span>
         </div>
       </div>
@@ -212,7 +212,18 @@ function renderQuotaRow(key, metric) {
   `;
 }
 
-function renderServiceCard(group, quotas) {
+function renderServiceCard(group, quotas, serviceStatus) {
+  const activation = serviceStatus?.[group.id];
+  if (activation === 'not_activated') {
+    return `
+    <div class="service-card">
+      <div class="service-card__head">
+        <span class="service-card__title">${group.title}</span>
+      </div>
+      <p class="service-card__inactive">未开通此服务</p>
+    </div>`;
+  }
+
   const rows = group.keys
     .map((k) => renderQuotaRow(k, quotas[k]))
     .filter(Boolean)
@@ -231,9 +242,9 @@ function renderServiceCard(group, quotas) {
   `;
 }
 
-function renderServiceSection(quotas, collapsible = false) {
+function renderServiceSection(quotas, serviceStatus, collapsible = false) {
   const cards = SERVICE_GROUPS
-    .map((g) => renderServiceCard(g, quotas))
+    .map((g) => renderServiceCard(g, quotas, serviceStatus))
     .filter(Boolean)
     .join('');
   if (!cards) return '';
@@ -242,7 +253,7 @@ function renderServiceSection(quotas, collapsible = false) {
   return `
     <details class="quota-details">
       <summary class="quota-details__summary">
-        <span class="quota-details__title">存储服务配额</span>
+        <span class="quota-details__title">资源额度细节</span>
         <span class="quota-details__meta">KV / D1 / R2</span>
       </summary>
       <div class="quota-details__body">${inner}</div>
@@ -250,43 +261,46 @@ function renderServiceSection(quotas, collapsible = false) {
   `;
 }
 
-function renderOtherSection(group, quotas, collapsible = false) {
-  const rows = group.keys
-    .map((k) => renderQuotaRow(k, quotas[k]))
+function renderAccountDetails(account) {
+  if (!account.quotas || account.status !== 'ok') return '';
+
+  const serviceBlock = renderServiceSection(account.quotas, account.serviceStatus, false);
+  const otherBlocks = OTHER_GROUPS
+    .map((g) => {
+      const rows = g.keys
+        .map((k) => renderQuotaRow(k, account.quotas[k]))
+        .filter(Boolean)
+        .join('');
+      if (!rows) return '';
+      return `<div class="quota-group-block"><h4 class="quota-group-block__title">${g.title}</h4>${rows}</div>`;
+    })
     .filter(Boolean)
     .join('');
-  if (!rows) return '';
-  const inner = `<div class="quota-group">${rows}</div>`;
-  if (!collapsible) return `<div><h4 class="metric-group__title">${group.title}</h4>${inner}</div>`;
+
+  const body = [serviceBlock, otherBlocks].filter(Boolean).join('');
+  if (!body) return '';
+
   return `
     <details class="quota-details">
       <summary class="quota-details__summary">
-        <span class="quota-details__title">${group.title}</span>
-        <span class="quota-details__meta">${group.keys.length} 项指标</span>
+        <span class="quota-details__title">配额详情</span>
+        <span class="quota-details__meta">展开查看</span>
       </summary>
-      <div class="quota-details__body">${inner}</div>
+      <div class="quota-details__body">${body}</div>
     </details>
   `;
 }
 
-function aggregateRequestHero(accounts) {
-  const okAccounts = accounts.filter((a) => a.status === 'ok');
-  let workersUsed = 0;
-  let workersLimit = 0;
-  let pagesUsed = 0;
-  let pagesLimit = 0;
-  for (const acc of okAccounts) {
-    const w = acc.quotas?.workers_requests;
-    const p = acc.quotas?.pages_requests;
-    if (w?.available) {
-      workersUsed += w.used;
-      workersLimit += w.limit;
-    }
-    if (p?.available) {
-      pagesUsed += p.used;
-      pagesLimit += p.limit;
-    }
+function getAccountRequestHero(account) {
+  if (account.status !== 'ok' || !account.quotas) {
+    return { totalUsed: 0, totalLimit: 0, pct: 0, workersUsed: 0, pagesUsed: 0 };
   }
+  const w = account.quotas.workers_requests;
+  const p = account.quotas.pages_requests;
+  const workersUsed = w?.available ? w.used : 0;
+  const pagesUsed = p?.available ? p.used : 0;
+  const workersLimit = w?.available ? w.limit : 0;
+  const pagesLimit = p?.available ? p.limit : 0;
   const totalUsed = workersUsed + pagesUsed;
   const totalLimit = workersLimit + pagesLimit;
   return {
@@ -298,60 +312,31 @@ function aggregateRequestHero(accounts) {
   };
 }
 
-function aggregateMetrics(accounts) {
-  const okAccounts = accounts.filter((a) => a.status === 'ok');
-  const metrics = {};
-  const hero = aggregateRequestHero(accounts);
+function isR2Inactive(account) {
+  return account.serviceStatus?.r2 === 'not_activated';
+}
 
-  for (const key of SUMMARY_OTHER_KEYS) {
-    let totalUsed = 0;
-    let totalLimit = 0;
-    let label = key;
-    let unit = '';
-    let period = '';
-    let availableCount = 0;
-
-    for (const acc of okAccounts) {
-      const m = acc.quotas?.[key];
-      if (m?.available) {
-        totalUsed += m.used;
-        totalLimit += m.limit;
-        label = m.label;
-        unit = m.unit;
-        period = m.period;
-        availableCount++;
-      }
-    }
-
-    if (availableCount > 0) {
-      metrics[key] = {
-        used: totalUsed,
-        limit: totalLimit,
-        pct: calcPct(totalUsed, totalLimit),
-        label,
-        unit,
-        period,
-        available: true,
-      };
-    }
-  }
-
+function collectAlerts(accounts) {
   const alerts = [];
-  for (const acc of okAccounts) {
+  for (const acc of accounts) {
+    if (acc.status !== 'ok') continue;
     for (const [key, m] of Object.entries(acc.quotas ?? {})) {
+      if (key.startsWith('r2_') && isR2Inactive(acc)) continue;
       if (m.available && m.pct >= 70) {
         alerts.push({ account: acc.accountName, key, metric: m });
       }
     }
   }
+  return alerts;
+}
 
+function aggregateMetrics(accounts) {
+  const okAccounts = accounts.filter((a) => a.status === 'ok');
   return {
     accountCount: accounts.length,
     okCount: okAccounts.length,
     errorCount: accounts.filter((a) => a.status === 'error').length,
-    hero,
-    metrics,
-    alerts,
+    alerts: collectAlerts(accounts),
   };
 }
 
@@ -359,7 +344,7 @@ function renderStatusBadge(summary) {
   const allOk = summary.errorCount === 0 && summary.okCount > 0;
   const hasErrors = summary.errorCount > 0;
   const cls = allOk ? 'status-badge status-badge--online' : hasErrors ? 'status-badge status-badge--error' : 'status-badge';
-  const label = allOk ? '系统正常' : hasErrors ? `${summary.errorCount} 个账号异常` : '等待数据';
+  const label = allOk ? 'System Online' : hasErrors ? `${summary.errorCount} 个账号异常` : '等待数据';
   return `
     <div class="${cls}">
       <span class="status-badge__dot"></span>
@@ -368,90 +353,66 @@ function renderStatusBadge(summary) {
   `;
 }
 
-function renderSummaryCard(summary) {
-  const { hero } = summary;
-  const otherRows = SUMMARY_OTHER_KEYS
-    .filter((k) => summary.metrics[k])
-    .map((k) => renderQuotaRow(k, summary.metrics[k]))
+function renderAlertsBlock(alerts) {
+  if (!alerts.length) return '';
+  return `
+    <div class="alert-box alert-box--danger dashboard-alerts">
+      <p><strong>${alerts.length} 项指标 ≥ 70%</strong></p>
+      <ul>
+        ${alerts.slice(0, 12).map((a) =>
+          `<li>${a.account} · ${getLabelZh(a.key, a.metric)} · ${a.metric.pct}%</li>`,
+        ).join('')}
+        ${alerts.length > 12 ? `<li>…还有 ${alerts.length - 12} 项</li>` : ''}
+      </ul>
+    </div>
+  `;
+}
+
+function renderDashboardHeader(summary) {
+  const accountHint = summary.accountCount > 0
+    ? `<p class="dashboard-account-hint">${summary.accountCount} 个账号</p>`
+    : '';
+  return accountHint;
+}
+
+function renderAccountOverview(account) {
+  if (account.status !== 'ok' || !account.quotas) return '';
+
+  const hero = getAccountRequestHero(account);
+  const summaryRows = OVERVIEW_SUMMARY_KEYS
+    .filter((k) => !(k.startsWith('r2_') && isR2Inactive(account)))
+    .map((k) => renderQuotaRow(k, account.quotas[k]))
+    .filter(Boolean)
     .join('');
 
-  const alertBlock = summary.alerts.length
-    ? `<div class="alert-box alert-box--danger">
-        <p><strong>${summary.alerts.length} 项指标 ≥ 70%</strong></p>
-        <ul>
-          ${summary.alerts.slice(0, 8).map((a) =>
-            `<li>${a.account}：${getLabelZh(a.key, a.metric)} (${a.metric.pct}%)</li>`,
-          ).join('')}
-          ${summary.alerts.length > 8 ? `<li>…还有 ${summary.alerts.length - 8} 项</li>` : ''}
-        </ul>
-      </div>`
-    : '';
-
   return `
-    <article class="col-span-full glass-card glass-card--hero">
-      <div class="summary-card__head">
-        <div>
-          <h2 class="glass-card__title">跨账号总配额</h2>
-          <p class="glass-card__subtitle">
-            ${summary.accountCount} 个账号 · ${summary.okCount} 正常 · ${summary.errorCount} 异常
-          </p>
-        </div>
-        ${renderStatusBadge(summary)}
-      </div>
-      ${renderHeroSection(hero.totalUsed, hero.totalLimit, hero.pct)}
-      ${renderMiniCards(hero.workersUsed, hero.pagesUsed)}
-      ${otherRows ? `<div class="summary-other">${otherRows}</div>` : ''}
-      ${alertBlock}
-    </article>
+    ${renderHeroSection(hero.totalUsed, hero.totalLimit, hero.pct)}
+    ${renderMiniCards(hero.workersUsed, hero.pagesUsed)}
+    <div class="overview-summary">${summaryRows}</div>
   `;
 }
 
 function renderAccountCard(account) {
   const statusBadge = account.status === 'error'
     ? `<span class="chip chip--danger">异常</span>`
-    : `<span class="chip chip--success">正常</span>`;
+    : '';
 
   const errorBlock = account.error
-    ? `<p class="text-error mb-3">${account.error}</p>`
+    ? `<p class="text-error account-card__error">${account.error}</p>`
     : '';
 
-  let heroBlock = '';
-  let miniBlock = '';
-  if (account.status === 'ok' && account.quotas) {
-    const w = account.quotas.workers_requests;
-    const p = account.quotas.pages_requests;
-    const workersUsed = w?.available ? w.used : 0;
-    const pagesUsed = p?.available ? p.used : 0;
-    const workersLimit = w?.available ? w.limit : 0;
-    const pagesLimit = p?.available ? p.limit : 0;
-    const totalUsed = workersUsed + pagesUsed;
-    const totalLimit = workersLimit + pagesLimit;
-    const pct = calcPct(totalUsed, totalLimit);
-    heroBlock = renderHeroSection(totalUsed, totalLimit, pct, true);
-    miniBlock = renderMiniCards(workersUsed, pagesUsed);
-  }
-
-  const serviceSection = account.quotas
-    ? renderServiceSection(account.quotas, true)
-    : '';
-
-  const otherSections = OTHER_GROUPS
-    .map((g) => renderOtherSection(g, account.quotas ?? {}, true))
-    .filter(Boolean)
-    .join('');
+  const overviewBlock = renderAccountOverview(account);
+  const detailsBlock = renderAccountDetails(account);
 
   return `
-    <article class="glass-card glass-card--interactive">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="glass-card__title">${account.accountName}</h3>
+    <article class="glass-card glass-card--account">
+      <div class="account-card__head">
+        <h3 class="account-card__title">${account.accountName}</h3>
         ${statusBadge}
       </div>
-      <p class="list-item__meta mb-2">${account.accountId}</p>
       ${errorBlock}
-      ${heroBlock}
-      ${miniBlock}
-      ${serviceSection}
-      ${otherSections}
+      ${overviewBlock}
+      ${detailsBlock}
     </article>
   `;
 }
@@ -475,7 +436,7 @@ async function refreshQuotas() {
   const statsEl = document.getElementById('refresh-stats');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = '刷新中…';
+    btn.classList.add('icon-btn--spin');
   }
   if (statsEl) statsEl.textContent = '';
   try {
@@ -484,8 +445,7 @@ async function refreshQuotas() {
     await loadDashboard();
     if (statsEl && data.refreshStats) {
       const s = data.refreshStats;
-      statsEl.textContent = `刷新：${s.refreshed} 更新，${s.cached} 缓存，${s.failed} 失败，${s.skippedByLimit} 跳过（预算），${s.subrequestsUsed} 次子请求`;
-      statsEl.className = 'page-meta';
+      statsEl.textContent = ` · 刷新 ${s.refreshed}/${s.refreshed + s.cached + s.failed}`;
     }
   } catch (err) {
     if (err.status === 401) {
@@ -493,13 +453,12 @@ async function refreshQuotas() {
         redirectToLogin('/');
       }
     } else if (statsEl) {
-      statsEl.textContent = err.message || '刷新失败';
-      statsEl.className = 'form-message form-message--error';
+      statsEl.textContent = ` · ${err.message || '刷新失败'}`;
     }
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = '手动刷新';
+      btn.classList.remove('icon-btn--spin');
     }
   }
 }
@@ -528,7 +487,15 @@ async function loadDashboard() {
   }
 
   const summary = aggregateMetrics(data.accounts);
-  grid.innerHTML = renderSummaryCard(summary) + data.accounts.map(renderAccountCard).join('');
+  const statusEl = document.getElementById('dashboard-status');
+  const headerHintEl = document.getElementById('dashboard-header-hint');
+  if (statusEl) statusEl.innerHTML = renderStatusBadge(summary);
+  if (headerHintEl) headerHintEl.innerHTML = renderDashboardHeader(summary);
+
+  const alertsBlock = renderAlertsBlock(summary.alerts);
+  const accountCards = data.accounts.map(renderAccountCard).join('');
+
+  grid.innerHTML = alertsBlock + accountCards;
   applyHeroGradients(grid);
 }
 

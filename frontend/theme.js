@@ -29,9 +29,14 @@
     const btn = document.createElement('button');
     btn.id = 'theme-toggle';
     btn.type = 'button';
-    btn.className = 'theme-toggle';
+    btn.className = 'theme-toggle theme-toggle--top-left';
     btn.addEventListener('click', toggleTheme);
-    document.body.appendChild(btn);
+    const topbar = document.querySelector('.dashboard-topbar');
+    if (topbar) {
+      topbar.insertBefore(btn, topbar.firstChild);
+    } else {
+      document.body.appendChild(btn);
+    }
     updateToggleButton(getTheme());
   }
 

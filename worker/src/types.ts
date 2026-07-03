@@ -15,6 +15,13 @@ export interface QuotaMetric {
 
 export type QuotasMap = Record<string, QuotaMetric>;
 
+/** Whether an optional Cloudflare product is subscribed on the account. */
+export type ServiceActivationStatus = 'activated' | 'not_activated' | 'unknown';
+
+export interface ServiceStatusMap {
+  r2?: ServiceActivationStatus;
+}
+
 export interface AccountConfig {
   id: string;
   name: string;
@@ -29,6 +36,8 @@ export interface AccountSnapshot {
   status: 'ok' | 'error';
   error?: string;
   quotas: QuotasMap;
+  /** Per-product subscription state (e.g. R2 not enabled on account). */
+  serviceStatus?: ServiceStatusMap;
   /** ISO timestamp of last successful quota fetch for this account */
   lastCheckTime?: string;
 }

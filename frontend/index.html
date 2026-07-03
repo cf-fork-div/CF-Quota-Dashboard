@@ -8,32 +8,28 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/styles.css" />
-  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="page-shell">
-  <header class="glass-nav">
-    <div class="glass-nav__inner">
-      <div class="glass-nav__brand">
-        <h1>CF 配额仪表盘</h1>
-        <p>多账号 Cloudflare 免费额度监控</p>
-      </div>
-      <nav class="glass-nav__links">
-        <a href="/" class="nav-link nav-link--active">仪表盘</a>
-        <a href="/admin" class="nav-link">账号管理</a>
-        <a href="/channels" class="nav-link">通知渠道</a>
-        <button id="refresh-btn" class="btn btn-primary btn-sm">手动刷新</button>
-        <span id="nav-auth" class="nav-auth"></span>
-      </nav>
+<body class="page-shell dashboard-page">
+  <div class="dashboard-topbar">
+    <div class="dashboard-topbar__spacer"></div>
+    <div class="dashboard-topbar__actions">
+      <button id="refresh-btn" class="icon-btn" type="button" title="手动刷新">↻</button>
+      <a href="/admin" class="icon-btn" title="账号管理">⚙</a>
+      <span id="nav-auth" class="nav-auth"></span>
     </div>
-  </header>
+  </div>
 
-  <main class="page-main">
-    <div class="page-meta">
-      <div>
-        最后更新：<span id="last-updated" class="meta-value">—</span>
-      </div>
-      <p id="refresh-stats"></p>
-    </div>
+  <main class="dashboard-main">
+    <header class="dashboard-header">
+      <h1 class="dashboard-title">Cloudflare 额度统计</h1>
+      <div id="dashboard-status"></div>
+      <div id="dashboard-header-hint"></div>
+    </header>
+
+    <p class="dashboard-meta">
+      最后更新：<span id="last-updated" class="meta-value">—</span>
+      <span id="refresh-stats"></span>
+    </p>
 
     <div id="accounts-grid" class="accounts-grid">
       <div class="loading-state">加载中…</div>
