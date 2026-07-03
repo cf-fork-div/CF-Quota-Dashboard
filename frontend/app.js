@@ -136,10 +136,41 @@ function applyGradientColor(container, percent) {
   const shadow = getGradientShadow(pct);
   container.style.setProperty('--gradient-color', color);
   container.style.setProperty('--gradient-color-shadow', `0 0 20px ${shadow}`);
+  container.style.setProperty('--ring-color', color);
   const bar = container.querySelector('.progress-bar-gradient');
   if (bar && pct > 0) {
     bar.style.setProperty('--bg-size', `${(100 / pct) * 100}%`);
   }
+  const ringFill = container.querySelector('.ring-progress__fill');
+  if (ringFill) {
+    ringFill.setAttribute('stroke', color);
+  }
+}
+
+function formatPctDisplay(pct) {
+  const n = Number(pct) || 0;
+  return n % 1 === 0 ? String(n) : n.toFixed(1);
+}
+
+function renderRingProgress(pct, size = 56) {
+  const stroke = 5;
+  const clampedPct = Math.max(0, Math.min(100, Number(pct) || 0));
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - clampedPct / 100);
+  const color = getGradientColor(clampedPct);
+  const cx = size / 2;
+
+  return `
+    <div class="ring-progress" data-hero-pct="${clampedPct}" style="--ring-size:${size}px;--ring-color:${color}">
+      <svg class="ring-progress__svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
+        <circle class="ring-progress__track" cx="${cx}" cy="${cx}" r="${radius}" stroke-width="${stroke}" />
+        <circle class="ring-progress__fill" cx="${cx}" cy="${cx}" r="${radius}" stroke-width="${stroke}"
+          stroke="${color}" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" />
+      </svg>
+      <span class="ring-progress__label">${formatPctDisplay(clampedPct)}%</span>
+    </div>
+  `;
 }
 
 function calcPct(used, limit) {
@@ -162,23 +193,18 @@ function formatQuotaMeta(metric) {
 }
 
 function renderRequestQuotaCard(icon, label, used, limit, pct) {
-  const width = Math.min(100, pct);
   const detail = limit > 0
     ? `${used.toLocaleString()} / ${limit.toLocaleString()}`
     : '不可用';
   return `
-    <div class="mini-card mini-card--quota" data-hero-pct="${pct}">
+    <div class="mini-card mini-card--quota mini-card--ring" data-hero-pct="${pct}">
       <span class="mini-card__icon">${icon}</span>
       <div class="mini-card__body">
-        <div class="mini-card__head">
-          <span class="mini-card__label">${label} 请求占比</span>
-          <span class="mini-card__pct">${pct}%</span>
-        </div>
-        <div class="progress-track progress-track--mini">
-          <div class="progress-bar-gradient" style="width:${width}%"></div>
-        </div>
+        <span class="mini-card__label">${label}</span>
+        <span class="mini-card__value">${used.toLocaleString()}</span>
         <p class="mini-card__detail">${detail}</p>
       </div>
+      ${renderRingProgress(pct)}
     </div>
   `;
 }
@@ -311,10 +337,10 @@ function getAccountRequestHero(account) {
   return {
     workersUsed,
     workersLimit,
-    workersPct: calcPct(workersUsed, workersLimit),
+    workersPct: w?.available ? w.pct : 0,
     pagesUsed,
     pagesLimit,
-    pagesPct: calcPct(pagesUsed, pagesLimit),
+    pagesPct: p?.available ? p.pct : 0,
   };
 }
 

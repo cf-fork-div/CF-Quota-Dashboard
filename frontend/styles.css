@@ -982,6 +982,91 @@ a:hover {
   height: 8px;
 }
 
+/* ── Circular ring progress ── */
+.ring-progress {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--ring-size, 3.5rem);
+  height: var(--ring-size, 3.5rem);
+}
+
+.ring-progress__svg {
+  display: block;
+  transform: rotate(-90deg);
+}
+
+.ring-progress__track {
+  fill: none;
+  stroke: var(--progress-track);
+}
+
+.ring-progress__fill {
+  fill: none;
+  stroke: var(--ring-color, var(--accent));
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s cubic-bezier(0.34, 1.56, 0.64, 1), stroke 0.6s ease;
+}
+
+.ring-progress__label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--gradient-color, var(--text-primary));
+  text-shadow: 0 0 12px var(--gradient-color-shadow, transparent);
+  transition: color 0.6s ease, text-shadow 0.6s ease;
+  line-height: 1;
+}
+
+.mini-card--ring {
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.mini-card--ring .mini-card__body {
+  flex: 1;
+  min-width: 0;
+  gap: 0.125rem;
+}
+
+.mini-card--ring .mini-card__label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mini-card--ring .mini-card__value {
+  font-size: 1.25rem;
+  line-height: 1.15;
+}
+
+.mini-card--ring .mini-card__detail {
+  text-align: left;
+  font-size: 0.6875rem;
+  margin: 0;
+  color: var(--text-faint);
+}
+
+@media (max-width: 639px) {
+  .mini-card--ring {
+    flex-wrap: nowrap;
+  }
+
+  .ring-progress {
+    --ring-size: 3rem;
+  }
+
+  .ring-progress__label {
+    font-size: 0.625rem;
+  }
+}
+
 /* ── Summary card header ── */
 .summary-card__head {
   display: flex;
