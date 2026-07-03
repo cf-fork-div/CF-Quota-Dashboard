@@ -1060,33 +1060,42 @@ async function reorderAccounts(accountIds) {
 
 function renderAdminAccountItem(account) {
   const alertSummary = summarizeAlertRules(account.alertRules);
+  const toggleBtnClass = account.enabled
+    ? 'account-card__btn account-card__btn--disable'
+    : 'account-card__btn account-card__btn--enable';
 
   return `
-    <div class="list-item list-item--sortable" data-id="${account.id}" draggable="false">
+    <div class="account-card account-card--sortable" data-id="${account.id}" draggable="false">
       <button type="button" class="account-drag-handle" aria-label="拖动排序" title="拖动排序">
         <span class="drag-handle-dots" aria-hidden="true">
           <span></span><span></span><span></span><span></span><span></span><span></span>
         </span>
       </button>
-      <div class="list-item__body">
-        <div class="list-item__content">
-          <div class="list-item__header">
-            <p class="list-item__title">${account.name}</p>
-            <span class="chip ${account.enabled ? 'chip--success' : 'chip--muted'}">
-              ${account.enabled ? '已启用' : '已禁用'}
-            </span>
-          </div>
-          <p class="list-item__meta">${account.accountId}</p>
-          <p class="list-item__meta">Token: ${account.apiToken}</p>
-          <p class="list-item__meta">${alertSummary}</p>
+      <div class="account-card__panel">
+        <div class="account-card__header">
+          <h3 class="account-card__title">${account.name}</h3>
+          <span class="chip ${account.enabled ? 'chip--success' : 'chip--muted'}">
+            ${account.enabled ? '已启用' : '已禁用'}
+          </span>
         </div>
-      </div>
-      <div class="list-item__actions">
-        <button data-id="${account.id}" data-action="edit" class="edit-btn btn btn-ghost btn-sm">编辑</button>
-        <button data-id="${account.id}" data-enabled="${account.enabled}" data-action="toggle" class="toggle-btn btn btn-ghost btn-sm">
-          ${account.enabled ? '禁用' : '启用'}
-        </button>
-        <button data-id="${account.id}" data-action="delete" class="delete-btn btn btn-danger btn-sm">删除</button>
+        <div class="account-card__body">
+          <div class="account-card__row">
+            <span class="account-card__label">Account ID</span>
+            <span class="account-card__value account-card__value--mono">${account.accountId}</span>
+          </div>
+          <div class="account-card__row">
+            <span class="account-card__label">Token</span>
+            <span class="account-card__value account-card__value--mono">${account.apiToken}</span>
+          </div>
+          <p class="account-card__alert">${alertSummary}</p>
+        </div>
+        <div class="account-card__footer">
+          <button data-id="${account.id}" data-action="edit" class="edit-btn account-card__btn account-card__btn--edit">编辑</button>
+          <button data-id="${account.id}" data-enabled="${account.enabled}" data-action="toggle" class="toggle-btn ${toggleBtnClass}">
+            ${account.enabled ? '禁用' : '启用'}
+          </button>
+          <button data-id="${account.id}" data-action="delete" class="delete-btn account-card__btn account-card__btn--delete">删除</button>
+        </div>
       </div>
     </div>
   `;
@@ -1095,7 +1104,7 @@ function renderAdminAccountItem(account) {
 function setupAccountDragDrop(list, getAccountIds, onReordered) {
   let draggedId = null;
 
-  list.querySelectorAll('.list-item').forEach((item) => {
+  list.querySelectorAll('.account-card--sortable').forEach((item) => {
     const id = item.dataset.id;
     const handle = item.querySelector('.account-drag-handle');
 
@@ -1104,15 +1113,15 @@ function setupAccountDragDrop(list, getAccountIds, onReordered) {
     });
     item.addEventListener('dragend', () => {
       item.draggable = false;
-      item.classList.remove('list-item--dragging');
-      list.querySelectorAll('.list-item').forEach((el) => el.classList.remove('list-item--drag-over'));
+      item.classList.remove('account-card--dragging');
+      list.querySelectorAll('.account-card--sortable').forEach((el) => el.classList.remove('account-card--drag-over'));
       draggedId = null;
     });
 
     item.addEventListener('dragstart', (e) => {
       if (!e.dataTransfer) return;
       draggedId = id;
-      item.classList.add('list-item--dragging');
+      item.classList.add('account-card--dragging');
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', id);
     });
@@ -1120,19 +1129,19 @@ function setupAccountDragDrop(list, getAccountIds, onReordered) {
     item.addEventListener('dragover', (e) => {
       e.preventDefault();
       if (draggedId && draggedId !== id) {
-        item.classList.add('list-item--drag-over');
+        item.classList.add('account-card--drag-over');
       }
     });
 
     item.addEventListener('dragleave', (e) => {
       if (!item.contains(e.relatedTarget)) {
-        item.classList.remove('list-item--drag-over');
+        item.classList.remove('account-card--drag-over');
       }
     });
 
     item.addEventListener('drop', async (e) => {
       e.preventDefault();
-      item.classList.remove('list-item--drag-over');
+      item.classList.remove('account-card--drag-over');
       if (!draggedId || draggedId === id) return;
 
       const ids = getAccountIds();
@@ -1182,7 +1191,7 @@ async function loadAdmin() {
 
   setupAccountDragDrop(
     list,
-    () => [...list.querySelectorAll('.list-item')].map((el) => el.dataset.id),
+    () => [...list.querySelectorAll('.account-card--sortable')].map((el) => el.dataset.id),
     async (accountIds) => {
       await reorderAccounts(accountIds);
       loadAdmin();
