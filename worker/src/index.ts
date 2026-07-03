@@ -125,17 +125,17 @@ app.post('/api/login', async (c) => {
     return c.json({ error: 'Auth not configured. Set PASSWORD in Worker vars.' }, 503);
   }
 
-  const body = await c.req.json<{ username?: string; password?: string }>();
-  const expectedUser = getAdminUsername(c.env);
+  const body = await c.req.json<{ password?: string }>();
   const expectedPass = c.env.PASSWORD!.trim();
+  const submitted = body.password?.trim() ?? '';
 
-  if (body.username !== expectedUser || body.password !== expectedPass) {
+  if (!submitted || submitted !== expectedPass) {
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 
-  const sessionToken = await createSession(c.env.KV, expectedUser);
+  const sessionToken = await createSession(c.env.KV, getAdminUsername(c.env));
   c.header('Set-Cookie', buildSessionCookie(sessionToken));
-  return c.json({ ok: true, username: expectedUser });
+  return c.json({ ok: true, username: getAdminUsername(c.env) });
 });
 
 app.post('/api/logout', async (c) => {

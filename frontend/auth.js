@@ -5,12 +5,12 @@ export async function checkAuth() {
   return resp.json();
 }
 
-export async function login(username, password) {
+export async function login(password) {
   const resp = await fetch(`${API_BASE}/api/login`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ password }),
   });
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.error || 'Login failed');
@@ -51,7 +51,7 @@ export async function setupNavAuth(navEl) {
       <button id="logout-btn" class="btn btn-ghost btn-sm">Logout</button>
     `;
   } else {
-    navEl.innerHTML = `<a href="/login" class="nav-link">Login</a>`;
+    navEl.innerHTML = `<a href="/login" class="nav-link">登录</a>`;
   }
 
   const logoutBtn = document.getElementById('logout-btn');

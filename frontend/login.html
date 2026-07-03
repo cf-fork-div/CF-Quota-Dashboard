@@ -1,39 +1,44 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login — CF Quota Dashboard</title>
+  <title>管理员登录 — CF 配额仪表盘</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/styles.css" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body class="login-page">
-  <div class="login-card">
-    <div class="glass-card glass-card--hero">
-      <h1 class="glass-card__title">Admin Login</h1>
-      <p class="glass-card__subtitle">Sign in to manage accounts and channels.</p>
+  <div class="login-modal-overlay" role="presentation">
+    <div class="login-modal" role="dialog" aria-modal="true" aria-labelledby="login-modal-title">
+      <header class="login-modal__header">
+        <div class="login-modal__header-main">
+          <span class="login-modal__header-icon" aria-hidden="true">
+            <i class="fas fa-lock"></i>
+          </span>
+          <h1 id="login-modal-title" class="login-modal__title">管理员登录</h1>
+        </div>
+        <a href="/" class="login-modal__close" aria-label="关闭">&times;</a>
+      </header>
 
-      <form id="login-form" class="mt-4">
+      <form id="login-form" class="login-modal__form">
         <div class="form-group">
-          <label class="form-label">Username</label>
-          <input name="username" required autocomplete="username" value="admin" class="glass-input" />
+          <label class="form-label" for="login-password">管理员登录码</label>
+          <input
+            id="login-password"
+            name="password"
+            type="password"
+            required
+            autocomplete="current-password"
+            class="glass-input"
+            placeholder="请输入管理员登录码"
+          />
         </div>
-        <div class="form-group">
-          <label class="form-label">Password</label>
-          <input name="password" type="password" required autocomplete="current-password" class="glass-input" />
-        </div>
-        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
-        <p id="login-message" class="form-message"></p>
+        <button type="submit" class="btn btn-primary btn-block login-modal__submit">登录</button>
+        <p id="login-message" class="form-message login-modal__message"></p>
       </form>
-
-      <div class="login-footer">
-        <a href="/">仪表盘</a>
-        <a href="/admin">账号管理</a>
-        <a href="/channels">通知渠道</a>
-      </div>
     </div>
   </div>
 
@@ -53,12 +58,14 @@
       e.preventDefault();
       const form = e.target;
       const msg = document.getElementById('login-message');
+      msg.textContent = '';
+      msg.className = 'form-message login-modal__message';
       try {
-        await login(form.username.value.trim(), form.password.value);
+        await login(form.password.value);
         window.location.href = next;
       } catch (err) {
-        msg.textContent = err.message;
-        msg.className = 'form-message form-message--error';
+        msg.textContent = err.message === 'Invalid credentials' ? '登录码不正确' : (err.message || '登录失败');
+        msg.className = 'form-message form-message--error login-modal__message';
       }
     });
   </script>

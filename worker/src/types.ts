@@ -134,9 +134,9 @@ export interface Env {
   WEBHOOK_URL?: string;
   ALERT_THRESHOLD?: string;
   FREE_TIER_LIMITS?: string;
-  /** Required for admin write ops in production */
+  /** Admin login code (single secret credential) */
   PASSWORD?: string;
-  /** Admin username (default: admin) */
+  /** Internal session username label (default: admin); not shown on login UI */
   USERNAME?: string;
   /** Optional public snapshot API token (defaults to HMAC of PASSWORD+USERNAME) */
   PUBLIC_API_TOKEN?: string;
