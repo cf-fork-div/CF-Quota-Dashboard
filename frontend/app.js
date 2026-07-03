@@ -3,7 +3,7 @@ import { setupNavAuth, authFetch, redirectToLogin } from './auth.js';
 const API_BASE = window.location.origin;
 
 const LABEL_ZH = {
-  workers_requests: 'Workers 请求',
+  workers_requests: 'Workers 请求数',
   pages_requests: 'Pages 请求',
   workers_build_minutes: 'Workers Builds（构建分钟）',
   workers_build_concurrent: 'Workers Builds（并发槽位）',
@@ -69,7 +69,7 @@ const SERVICE_GROUPS = [
 const OTHER_GROUPS = [
   {
     title: '计算与运行时',
-    keys: ['workers_build_minutes', 'pages_builds', 'workflows_invocations', 'browser_minutes', 'ai_neurons'],
+    keys: ['workers_build_minutes', 'pages_builds', 'workers_requests', 'browser_minutes', 'ai_neurons'],
   },
   {
     title: 'Durable Objects',
@@ -177,7 +177,7 @@ function renderMiniCards(workersUsed, pagesUsed) {
       <div class="mini-card">
         <span class="mini-card__icon">🔶</span>
         <div class="mini-card__info">
-          <span class="mini-card__label">Workers 请求</span>
+          <span class="mini-card__label">Workers 请求数</span>
           <span class="mini-card__value">${workersUsed.toLocaleString()}</span>
         </div>
       </div>

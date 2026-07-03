@@ -127,7 +127,10 @@ interface ViewerAccount {
     max?: { storedVectorDimensions?: number };
     dimensions?: { indexName?: string; datetime?: string };
   }>;
-  workersBuildsBuildMinutesAdaptiveGroups?: Array<{ sum?: { buildMinutes?: number } }>;
+  workersBuildsBuildMinutesAdaptiveGroups?: Array<{
+    sum?: { buildMinutes?: number };
+    dimensions?: { date?: string };
+  }>;
   pagesFunctionsInvocationsAdaptiveGroups?: Array<{ sum?: { requests?: number } }>;
 }
 
@@ -238,9 +241,6 @@ async function fetchCoreMetrics(
         workersAnalyticsEngineAdaptiveGroups(limit: 10000, filter: { datetime_geq: $dayStart, datetime_leq: $dayEnd }) {
           count
         }
-        workersBuildsBuildMinutesAdaptiveGroups(limit: 10000, filter: { datetime_geq: $monthStart, datetime_leq: $monthEnd }) {
-          sum { buildMinutes }
-        }
         durableObjectsInvocationsAdaptiveGroups(limit: 10000, filter: { datetime_geq: $dayStart, datetime_leq: $dayEnd }) {
           sum { requests }
         }
@@ -272,6 +272,74 @@ async function fetchCoreMetrics(
   }
 
   return { acc: getAccount(result.data), errors: [] };
+}
+
+async function fetchWorkersBuildMinutes(
+  token: string,
+  accountId: string,
+  monthStart: string,
+  nowIso: string,
+): Promise<{ ok: true; minutes: number } | { ok: false; error: string }> {
+  const dailyQuery = `query WorkersBuildMinutesDaily($accountTag: String!, $monthStart: DateTime!, $now: DateTime!) {
+    viewer {
+      accounts(filter: { accountTag: $accountTag }) {
+        workersBuildsBuildMinutesAdaptiveGroups(
+          limit: 100,
+          filter: { datetime_geq: $monthStart, datetime_leq: $now },
+          orderBy: [date_ASC]
+        ) {
+          sum { buildMinutes }
+          dimensions { date }
+        }
+      }
+    }
+  }`;
+
+  const dailyResult = await safeQuery('workers-builds', () =>
+    graphqlRequest<{ viewer?: { accounts?: ViewerAccount[] } }>(token, dailyQuery, {
+      accountTag: accountId,
+      monthStart,
+      now: nowIso,
+    }),
+  );
+
+  if (dailyResult.ok) {
+    const groups = getAccount(dailyResult.data).workersBuildsBuildMinutesAdaptiveGroups;
+    if (Array.isArray(groups)) {
+      return { ok: true, minutes: sumGroups(groups, (g) => g.sum?.buildMinutes) };
+    }
+  }
+
+  const aggregateQuery = `query WorkersBuildMinutesTotal($accountTag: String!, $monthStart: DateTime!, $now: DateTime!) {
+    viewer {
+      accounts(filter: { accountTag: $accountTag }) {
+        workersBuildsBuildMinutesAdaptiveGroups(
+          limit: 1,
+          filter: { datetime_geq: $monthStart, datetime_leq: $now }
+        ) {
+          sum { buildMinutes }
+        }
+      }
+    }
+  }`;
+
+  const aggregateResult = await safeQuery('workers-builds', () =>
+    graphqlRequest<{ viewer?: { accounts?: ViewerAccount[] } }>(token, aggregateQuery, {
+      accountTag: accountId,
+      monthStart,
+      now: nowIso,
+    }),
+  );
+
+  if (!aggregateResult.ok) {
+    return dailyResult.ok ? { ok: false, error: 'workers-builds: no build minute data' } : aggregateResult;
+  }
+
+  const groups = getAccount(aggregateResult.data).workersBuildsBuildMinutesAdaptiveGroups;
+  return {
+    ok: true,
+    minutes: sumGroups(groups, (g) => g.sum?.buildMinutes),
+  };
 }
 
 async function fetchD1DatabaseCount(
@@ -828,15 +896,22 @@ async function fetchAllMetrics(
   const ranges = getUtcRanges();
   const partialErrors: string[] = [];
 
+  const nowIso = new Date().toISOString();
   const coreResult = await fetchCoreMetrics(token, accountId, ranges.day, ranges.month);
   const acc = coreResult.acc;
   if (coreResult.errors.length) partialErrors.push(...coreResult.errors);
+
+  const workersBuildsResult = await fetchWorkersBuildMinutes(
+    token,
+    accountId,
+    ranges.month.start,
+    nowIso,
+  );
 
   const d1Result = await fetchD1Metrics(token, accountId, ranges.day, ranges.month);
   const d1DatabasesResult = await fetchD1DatabaseCount(token, accountId);
   const kvResult = await fetchKvMetrics(token, accountId, ranges.dayDate, ranges.monthDate);
   const r2Result = await fetchR2Metrics(token, accountId, ranges.month);
-  const nowIso = new Date().toISOString();
   const vectorizeResult = await fetchVectorizeMetrics(token, accountId, ranges.month.start, nowIso);
 
   const pagesResult = await safeQuery('pages', () =>
@@ -848,6 +923,7 @@ async function fetchAllMetrics(
   else if (kvResult.errors.length) partialErrors.push(...kvResult.errors);
   if (!r2Result.ok) partialErrors.push(r2Result.error);
   if (!pagesResult.ok) partialErrors.push(pagesResult.error);
+  if (!workersBuildsResult.ok) partialErrors.push(workersBuildsResult.error);
 
   const kvOpsOk = kvResult.ok && !kvResult.errors.some((e) => e.startsWith('kv-ops'));
   const kvStorageOk = kvResult.ok && !kvResult.errors.some((e) => e.startsWith('kv-storage'));
@@ -870,11 +946,8 @@ async function fetchAllMetrics(
     (g) => g.sum?.totalSessionDurationMs,
   );
   const analyticsWrites = sumGroups(acc.workersAnalyticsEngineAdaptiveGroups, (g) => g.count);
-  const workersBuildMinutes = sumGroups(
-    acc.workersBuildsBuildMinutesAdaptiveGroups,
-    (g) => g.sum?.buildMinutes,
-  );
-  const workersBuildsOk = Array.isArray(acc.workersBuildsBuildMinutesAdaptiveGroups);
+  const workersBuildMinutes = workersBuildsResult.ok ? workersBuildsResult.minutes : 0;
+  const workersBuildsOk = workersBuildsResult.ok;
 
   const doRequests = sumGroups(
     acc.durableObjectsInvocationsAdaptiveGroups,
