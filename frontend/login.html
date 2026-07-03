@@ -43,10 +43,10 @@
   </div>
 
   <script type="module">
-    import { checkAuth, login } from '/auth.js';
+    import { checkAuth, login, sanitizeRedirectPath } from '/auth.js';
 
     const params = new URLSearchParams(window.location.search);
-    const next = params.get('next') || '/admin';
+    const next = sanitizeRedirectPath(params.get('next'));
 
     checkAuth().then((me) => {
       if (me.authenticated) {

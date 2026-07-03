@@ -1,4 +1,5 @@
 import type { AlertMessage, SendResult } from '../types';
+import { validateOutboundUrl } from '../url-validation';
 
 /**
  * Email via webhook relay (Resend, Mailgun, custom mail API, etc.).
@@ -12,6 +13,9 @@ export async function sendEmail(
   const to = config.to?.trim();
   if (!webhookUrl) return { ok: false, error: 'webhookUrl is required' };
   if (!to) return { ok: false, error: 'to is required' };
+
+  const urlCheck = validateOutboundUrl(webhookUrl);
+  if (!urlCheck.ok) return { ok: false, error: urlCheck.error };
 
   const body = {
     to,

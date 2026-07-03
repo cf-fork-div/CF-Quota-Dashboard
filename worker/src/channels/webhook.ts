@@ -1,4 +1,5 @@
 import type { AlertMessage, SendResult } from '../types';
+import { sanitizeCustomHeaders, validateOutboundUrl } from '../url-validation';
 
 export async function sendWebhook(
   config: Record<string, string>,
@@ -6,6 +7,9 @@ export async function sendWebhook(
 ): Promise<SendResult> {
   const webhookUrl = config.webhookUrl?.trim();
   if (!webhookUrl) return { ok: false, error: 'webhookUrl is required' };
+
+  const urlCheck = validateOutboundUrl(webhookUrl);
+  if (!urlCheck.ok) return { ok: false, error: urlCheck.error };
 
   const body = {
     title: message.title,
@@ -27,7 +31,11 @@ export async function sendWebhook(
   if (config.customHeaders?.trim()) {
     try {
       const custom = JSON.parse(config.customHeaders) as Record<string, string>;
-      Object.assign(headers, custom);
+      const sanitized = sanitizeCustomHeaders(custom);
+      if (sanitized.error) {
+        return { ok: false, error: sanitized.error };
+      }
+      Object.assign(headers, sanitized.headers);
     } catch {
       return { ok: false, error: 'customHeaders must be valid JSON' };
     }

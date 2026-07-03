@@ -144,6 +144,8 @@ export interface Env {
   ACCOUNT_CHECK_INTERVAL_MINUTES?: string;
   /** Max Cloudflare API subrequests per refresh run (default: 50, cap: 50) */
   MAX_EXTERNAL_SUBREQUESTS_PER_RUN?: string;
+  /** Optional CORS allowed origin (defaults to same-origin only) */
+  ALLOWED_ORIGIN?: string;
 }
 
 export interface QuotaFetchResult extends QuotaSnapshot {

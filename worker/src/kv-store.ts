@@ -738,3 +738,31 @@ export async function markAlertTestSent(kv: KVNamespace, key: string): Promise<v
 }
 
 
+
+const SNAPSHOT_REFRESH_LOCK_KEY = 'SNAPSHOT_REFRESH_LOCK';
+
+const SNAPSHOT_REFRESH_COOLDOWN_SECONDS = 60;
+
+
+
+export async function tryAcquireSnapshotRefreshLock(
+
+  kv: KVNamespace,
+
+): Promise<boolean> {
+
+  const existing = await kv.get(SNAPSHOT_REFRESH_LOCK_KEY);
+
+  if (existing) return false;
+
+  await kv.put(SNAPSHOT_REFRESH_LOCK_KEY, String(Date.now()), {
+
+    expirationTtl: SNAPSHOT_REFRESH_COOLDOWN_SECONDS,
+
+  });
+
+  return true;
+
+}
+
+

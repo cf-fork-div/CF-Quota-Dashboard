@@ -77,7 +77,7 @@
 
 - **管理认证**
   - 单一 `PASSWORD` 登录码（`/login` 单字段，无需用户名）
-  - 未设置 `PASSWORD` 时为 **Dev 模式**，写操作无需认证
+  - 未设置 `PASSWORD` 时写操作 API 返回 **503**（不再开放 Dev 写权限）；`GET /api/snapshot` 仍可公开读取
   - Session Cookie（`cfqd_session`）24 小时有效，存 KV
 
 - **公开 API**
@@ -112,7 +112,7 @@
 3. 若已设置 `PASSWORD`，访问 **账号管理**（`/admin`）或 **通知渠道**（`/channels`）会跳转 `/login`
 4. 在登录页输入 **管理员登录码**（仅一个字段，无需用户名）
 
-> 未设置 `PASSWORD` 时为 **Dev 模式**：导航栏显示 `Dev mode`，写操作无需登录。
+> 未设置 `PASSWORD` 时导航栏显示 `Dev mode`，但**写操作 API 已禁用**（503）；请设置 `wrangler secret put PASSWORD` 后再使用管理功能。
 
 ### 添加 Cloudflare 账号
 
@@ -193,10 +193,10 @@
 | `/login` | GET | 登录页 | 无 |
 | `/api/snapshot` | GET | 配额快照（过期自动刷新） | 无 |
 | `/api/public/snapshot?token=` | GET | 公开快照 | Token |
-| `/api/accounts` | GET/POST | 账号列表 / 添加 | POST 需 Cookie† |
+| `/api/accounts` | GET/POST | 账号列表 / 添加 | Cookie† |
 | `/api/accounts/verify` | POST | 验证凭证 | Cookie† |
 | `/api/accounts/:id` | PUT/DELETE | 更新 / 删除账号 | Cookie† |
-| `/api/channels` | GET/POST | 渠道列表 / 添加 | POST 需 Cookie† |
+| `/api/channels` | GET/POST | 渠道列表 / 添加 | Cookie† |
 | `/api/channels/:id` | PUT/DELETE/PATCH | 更新 / 删除 / 启停 | Cookie† |
 | `/api/channels/:id/test` | POST | 测试单个渠道 | Cookie† |
 | `/api/alerts/test` | POST | 测试所有渠道告警 | Cookie† |
@@ -207,7 +207,7 @@
 | `/cron/fetch` | POST | 强制手动刷新 | Cookie† |
 
 \* 页面级：`authEnabled && !authenticated` 时前端重定向 `/login`。  
-† API 级：未配置 `PASSWORD` 时 `requireAuth` 直接放行（Dev 模式）。
+† API 级：需有效 Session Cookie；未配置 `PASSWORD` 时受保护 API 返回 503。
 
 ---
 
@@ -240,7 +240,7 @@
 - ✅ 使用只读 API Token，而非 Global API Key
 - ✅ 被监控账号 Token 存于 KV，API 响应仅返回掩码（`abcd...wxyz`）
 - ✅ 托管 Worker 的 `CLOUDFLARE_API_TOKEN`（CI 用）与被监控账号 Token 职责分离
-- ⚠️ 未设置 `PASSWORD` 时所有写 API 对公网开放（Dev 模式）
+- ⚠️ 未设置 `PASSWORD` 时写操作与管理读 API 均不可用（503）；公开仪表盘 `GET /api/snapshot` 仍可访问
 
 ---
 

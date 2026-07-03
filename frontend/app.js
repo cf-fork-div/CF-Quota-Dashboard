@@ -1,4 +1,5 @@
 import { setupNavAuth, authFetch, parseJsonResponse, redirectToLogin } from './auth.js';
+import { escapeHtml } from './utils.js';
 
 const API_BASE = window.location.origin;
 
@@ -158,7 +159,7 @@ let enabledNotificationChannels = [];
 
 async function fetchEnabledChannels() {
   try {
-    const resp = await fetch(`${API_BASE}/api/channels`);
+    const resp = await authFetch(`${API_BASE}/api/channels`);
     const channels = await resp.json();
     enabledNotificationChannels = (channels ?? []).filter((c) => c.enabled);
   } catch {
@@ -206,12 +207,12 @@ function setAlertSectionChannelState(selectedChannelId) {
     '<option value="">请选择通知渠道</option>',
     ...enabledNotificationChannels.map(
       (ch) =>
-        `<option value="${ch.id}"${ch.id === selectedChannelId ? ' selected' : ''}>${ch.name} (${ch.type})</option>`,
+        `<option value="${escapeHtml(ch.id)}"${ch.id === selectedChannelId ? ' selected' : ''}>${escapeHtml(ch.name)} (${escapeHtml(ch.type)})</option>`,
     ),
   ].join('');
 
   if (selectedChannelId && !enabledNotificationChannels.some((c) => c.id === selectedChannelId)) {
-    select.innerHTML += `<option value="${selectedChannelId}" selected disabled>已失效渠道</option>`;
+    select.innerHTML += `<option value="${escapeHtml(selectedChannelId)}" selected disabled>已失效渠道</option>`;
   }
 
   disableAlertRuleInputs(false);
@@ -301,7 +302,7 @@ function renderAlertRulesGrid(alertRules = []) {
     const inputDisabled = disabled || !state.enabled;
     return `
       <div class="alert-toggle-row${checkedClass}" data-group-id="${group.id}">
-        <span class="alert-toggle-row__name">${group.title}</span>
+        <span class="alert-toggle-row__name">${escapeHtml(group.title)}</span>
         <div class="alert-toggle-row__controls">
           <input
             type="number"
@@ -567,11 +568,11 @@ function renderQuotaRow(key, metric) {
   const pct = metric.available ? metric.pct : 0;
   const width = metric.available ? Math.min(100, pct) : 0;
   const color = metric.available ? getGradientColor(pct) : 'transparent';
-  const note = metric.note ? `<p class="quota-row__note">${metric.note}</p>` : '';
+  const note = metric.note ? `<p class="quota-row__note">${escapeHtml(metric.note)}</p>` : '';
   return `
     <div class="quota-row">
       <div class="quota-row__top">
-        <span class="quota-row__label">${getLabelZh(key, metric)}</span>
+        <span class="quota-row__label">${escapeHtml(getLabelZh(key, metric))}</span>
         <span class="quota-row__meta">${formatQuotaMeta(metric)}</span>
       </div>
       <div class="quota-track">
@@ -730,7 +731,7 @@ function renderAlertsBlock(alerts) {
       <p><strong>${alerts.length} 项指标 ≥ 70%</strong></p>
       <ul>
         ${alerts.slice(0, 12).map((a) =>
-          `<li>${a.account} · ${getLabelZh(a.key, a.metric)} · ${a.metric.pct}%</li>`,
+          `<li>${escapeHtml(a.account)} · ${escapeHtml(getLabelZh(a.key, a.metric))} · ${escapeHtml(a.metric.pct)}%</li>`,
         ).join('')}
         ${alerts.length > 12 ? `<li>…还有 ${alerts.length - 12} 项</li>` : ''}
       </ul>
@@ -763,7 +764,7 @@ function renderAccountCard(account) {
     : '';
 
   const errorBlock = account.error
-    ? `<p class="text-error account-card__error">${account.error}</p>`
+    ? `<p class="text-error account-card__error">${escapeHtml(account.error)}</p>`
     : '';
 
   const overviewBlock = renderAccountOverview(account);
@@ -772,7 +773,7 @@ function renderAccountCard(account) {
   return `
     <article class="glass-card glass-card--account">
       <div class="account-card__head">
-        <h3 class="account-card__title">${account.accountName}</h3>
+        <h3 class="account-card__title">${escapeHtml(account.accountName)}</h3>
         ${statusBadge}
       </div>
       ${errorBlock}
@@ -1238,7 +1239,7 @@ function renderAdminAccountItem(account) {
     : 'account-card__btn account-card__btn--enable';
 
   return `
-    <div class="account-card account-card--sortable" data-id="${account.id}" draggable="false">
+    <div class="account-card account-card--sortable" data-id="${escapeHtml(account.id)}" draggable="false">
       <div class="account-card__panel">
         <div class="account-card__header">
           <button type="button" class="account-drag-handle" aria-label="拖动排序" title="拖动排序">
@@ -1246,7 +1247,7 @@ function renderAdminAccountItem(account) {
               <span></span><span></span><span></span><span></span><span></span><span></span>
             </span>
           </button>
-          <h3 class="account-card__title">${account.name}</h3>
+          <h3 class="account-card__title">${escapeHtml(account.name)}</h3>
           <span class="chip ${account.enabled ? 'chip--success' : 'chip--muted'}">
             ${account.enabled ? '已启用' : '已禁用'}
           </span>
@@ -1254,31 +1255,31 @@ function renderAdminAccountItem(account) {
         <div class="account-card__body">
           <div class="account-card__row">
             <span class="account-card__label">Account ID:</span>
-            <span class="account-card__value account-card__value--mono" title="${account.accountId}">${truncateAccountId(account.accountId)}</span>
+            <span class="account-card__value account-card__value--mono" title="${escapeHtml(account.accountId)}">${escapeHtml(truncateAccountId(account.accountId))}</span>
           </div>
           <div class="account-card__row">
             <span class="account-card__label">Token:</span>
-            <span class="account-card__value account-card__value--mono">${account.apiToken || '—'}</span>
+            <span class="account-card__value account-card__value--mono">${escapeHtml(account.apiToken || '—')}</span>
           </div>
           <div class="account-card__row">
             <span class="account-card__label">告警开启:</span>
-            <span class="account-card__value">${alertEnabled}</span>
+            <span class="account-card__value">${escapeHtml(alertEnabled)}</span>
           </div>
           <div class="account-card__row">
             <span class="account-card__label">告警项目:</span>
-            <span class="account-card__value">${alertProjects}</span>
+            <span class="account-card__value">${escapeHtml(alertProjects)}</span>
           </div>
           <div class="account-card__row">
             <span class="account-card__label">通知渠道:</span>
-            <span class="account-card__value${channelClass}">${channelDisplay}</span>
+            <span class="account-card__value${channelClass}">${escapeHtml(channelDisplay)}</span>
           </div>
         </div>
         <div class="account-card__footer">
-          <button data-id="${account.id}" data-action="edit" class="edit-btn account-card__btn account-card__btn--edit">编辑</button>
-          <button data-id="${account.id}" data-enabled="${account.enabled}" data-action="toggle" class="toggle-btn ${toggleBtnClass}">
+          <button data-id="${escapeHtml(account.id)}" data-action="edit" class="edit-btn account-card__btn account-card__btn--edit">编辑</button>
+          <button data-id="${escapeHtml(account.id)}" data-enabled="${account.enabled}" data-action="toggle" class="toggle-btn ${toggleBtnClass}">
             ${account.enabled ? '禁用' : '启用'}
           </button>
-          <button data-id="${account.id}" data-action="delete" class="delete-btn account-card__btn account-card__btn--delete">删除</button>
+          <button data-id="${escapeHtml(account.id)}" data-action="delete" class="delete-btn account-card__btn account-card__btn--delete">删除</button>
         </div>
       </div>
     </div>
@@ -1360,59 +1361,71 @@ async function loadAdmin() {
 
   await loadAlertServiceGroups();
 
-  const resp = await authFetch(`${API_BASE}/api/accounts`);
-  const accounts = await resp.json();
+  try {
+    const resp = await authFetch(`${API_BASE}/api/accounts`);
+    const accounts = await resp.json();
 
-  if (!accounts.length) {
-    list.innerHTML = `
+    if (!accounts.length) {
+      list.innerHTML = `
       <div class="empty-state">
         <div class="empty-state__icon">👤</div>
         <p>尚未配置账号。</p>
       </div>`;
-    return;
-  }
+      return;
+    }
 
-  list.className = 'accounts-sortable-list';
-  list.innerHTML = accounts.map(renderAdminAccountItem).join('');
+    list.className = 'accounts-sortable-list';
+    list.innerHTML = accounts.map(renderAdminAccountItem).join('');
 
-  setupAccountDragDrop(
-    list,
-    () => [...list.querySelectorAll('.account-card--sortable')].map((el) => el.dataset.id),
-    async (accountIds) => {
-      await reorderAccounts(accountIds);
-      loadAdmin();
-    },
-  );
-
-  list.querySelectorAll('[data-action]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-id');
-      const action = btn.getAttribute('data-action');
-      const account = accounts.find((a) => a.id === id);
-
-      if (action === 'edit' && account) {
-        openModalEdit(account);
-        return;
-      }
-
-      if (action === 'toggle' && account) {
-        await authFetch(`${API_BASE}/api/accounts/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled: !account.enabled }),
-        });
+    setupAccountDragDrop(
+      list,
+      () => [...list.querySelectorAll('.account-card--sortable')].map((el) => el.dataset.id),
+      async (accountIds) => {
+        await reorderAccounts(accountIds);
         loadAdmin();
-        return;
-      }
+      },
+    );
 
-      if (action === 'delete') {
-        if (!confirm('确定删除此账号？')) return;
-        await authFetch(`${API_BASE}/api/accounts/${id}`, { method: 'DELETE' });
-        if (editingAccountId === id) resetAccountForm();
-        loadAdmin();
-      }
+    list.querySelectorAll('[data-action]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        const action = btn.getAttribute('data-action');
+        const account = accounts.find((a) => a.id === id);
+
+        if (action === 'edit' && account) {
+          openModalEdit(account);
+          return;
+        }
+
+        if (action === 'toggle' && account) {
+          await authFetch(`${API_BASE}/api/accounts/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: !account.enabled }),
+          });
+          loadAdmin();
+          return;
+        }
+
+        if (action === 'delete') {
+          if (!confirm('确定删除此账号？')) return;
+          await authFetch(`${API_BASE}/api/accounts/${id}`, { method: 'DELETE' });
+          if (editingAccountId === id) resetAccountForm();
+          loadAdmin();
+        }
+      });
     });
-  });
+  } catch (err) {
+    if (err.status === 401) {
+      redirectToLogin('/admin');
+      return;
+    }
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state__icon">⚠️</div>
+        <p>${escapeHtml(err.message || '账号列表加载失败')}</p>
+      </div>`;
+  }
 }
 
 async function submitAccountForm(e) {

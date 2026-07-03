@@ -70,7 +70,33 @@ export async function authFetch(url, options = {}) {
     err.status = 401;
     throw err;
   }
+  if (resp.status === 503) {
+    let message = 'Auth not configured';
+    try {
+      const data = await resp.clone().json();
+      message = data.error || message;
+    } catch {
+      // ignore parse errors
+    }
+    const err = new Error(message);
+    err.status = 503;
+    throw err;
+  }
   return resp;
+}
+
+export function sanitizeRedirectPath(raw) {
+  if (!raw || typeof raw !== 'string') return '/admin';
+  const path = raw.trim();
+  if (!path.startsWith('/') || path.startsWith('//')) return '/admin';
+  if (path.includes('\\') || path.includes('\0')) return '/admin';
+  try {
+    const decoded = decodeURIComponent(path);
+    if (decoded.startsWith('//') || decoded.includes('://')) return '/admin';
+  } catch {
+    return '/admin';
+  }
+  return path;
 }
 
 /** Parse JSON response; fall back to a friendly message for non-JSON error bodies. */

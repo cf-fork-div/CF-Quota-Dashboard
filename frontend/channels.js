@@ -1,5 +1,6 @@
-import { requirePageAuth, setupNavAuth, authFetch, parseJsonResponse } from './auth.js';
+import { requirePageAuth, setupNavAuth, authFetch, parseJsonResponse, redirectToLogin } from './auth.js';
 import { startRateLimitCountdown } from './rate-limit.js';
+import { escapeHtml } from './utils.js';
 
 const API_BASE = window.location.origin;
 
@@ -264,7 +265,7 @@ function editChannel(channel) {
 }
 
 async function fetchChannels() {
-  const resp = await fetch(`${API_BASE}/api/channels`);
+  const resp = await authFetch(`${API_BASE}/api/channels`);
   if (!resp.ok) throw new Error('通知渠道加载失败');
   return resp.json();
 }
@@ -288,7 +289,7 @@ function renderToggleSwitch(channel) {
       data-action="toggle"
       data-id="${channel.id}"
       class="toggle-switch toggle-switch--lg${onClass}${disabled}"
-      aria-label="${label}：${channel.name}"
+      aria-label="${label}：${escapeHtml(channel.name)}"
       aria-pressed="${on}"
       title="${label}"
       role="switch"
@@ -310,31 +311,31 @@ function renderChannelCard(channel) {
   const deleting = deletingId === channel.id;
 
   return `
-    <article class="channel-card channel-card--uptime${activeClass}" data-id="${channel.id}">
-      <div class="channel-card__clickable" tabindex="0" role="button" aria-label="编辑通知渠道：${channel.name}">
+    <article class="channel-card channel-card--uptime${activeClass}" data-id="${escapeHtml(channel.id)}">
+      <div class="channel-card__clickable" tabindex="0" role="button" aria-label="编辑通知渠道：${escapeHtml(channel.name)}">
         ${renderChannelIcon(channel.type, 'lg')}
         <div class="channel-card__info">
           <div class="channel-card__title-row">
-            <h3 class="channel-card__title">${channel.name}</h3>
-            <span class="channel-type-badge">${info.label}</span>
+            <h3 class="channel-card__title">${escapeHtml(channel.name)}</h3>
+            <span class="channel-type-badge">${escapeHtml(info.label)}</span>
             <span class="channel-status-pill ${statusClass}">
               <span class="channel-status-pill__dot" aria-hidden="true"></span>
               ${statusLabel}
             </span>
           </div>
-          <p class="channel-card__desc">${info.desc}</p>
+          <p class="channel-card__desc">${escapeHtml(info.desc)}</p>
         </div>
       </div>
       <div class="channel-card__actions">
         ${renderToggleSwitch(channel)}
-        <button type="button" data-action="test" data-id="${channel.id}" class="btn-test-outline"${testing ? ' disabled' : ''} aria-label="测试通知渠道：${channel.name}">
+        <button type="button" data-action="test" data-id="${escapeHtml(channel.id)}" class="btn-test-outline"${testing ? ' disabled' : ''} aria-label="测试通知渠道：${escapeHtml(channel.name)}">
           <i class="fas ${testing ? 'fa-spinner fa-spin' : 'fa-paper-plane'}" aria-hidden="true"></i>
           测试
         </button>
-        <button type="button" data-action="edit" data-id="${channel.id}" class="icon-btn icon-btn--sm icon-btn--edit" aria-label="编辑 ${channel.name}" title="编辑">
+        <button type="button" data-action="edit" data-id="${escapeHtml(channel.id)}" class="icon-btn icon-btn--sm icon-btn--edit" aria-label="编辑 ${escapeHtml(channel.name)}" title="编辑">
           <i class="fas fa-pen" aria-hidden="true"></i>
         </button>
-        <button type="button" data-action="delete" data-id="${channel.id}" class="icon-btn icon-btn--sm icon-btn--danger"${deleting ? ' disabled' : ''} aria-label="删除 ${channel.name}" title="删除">
+        <button type="button" data-action="delete" data-id="${escapeHtml(channel.id)}" class="icon-btn icon-btn--sm icon-btn--danger"${deleting ? ' disabled' : ''} aria-label="删除 ${escapeHtml(channel.name)}" title="删除">
           <i class="fas ${deleting ? 'fa-spinner fa-spin' : 'fa-trash'}" aria-hidden="true"></i>
         </button>
       </div>
@@ -416,8 +417,12 @@ async function loadChannels(options = {}) {
     channels = await fetchChannels();
     updateChannelCounts();
     renderChannelList();
-  } catch {
-    setChannelError('通知渠道加载失败');
+  } catch (err) {
+    if (err.status === 401) {
+      redirectToLogin('/channels');
+      return;
+    }
+    setChannelError(err.message || '通知渠道加载失败');
     const list = document.getElementById('channels-list');
     if (list && channels.length === 0) {
       list.innerHTML = '';
@@ -474,14 +479,12 @@ function renderAlertTestResults(container, resultChannels) {
     const info = getTypeInfo(ch.channelType);
     const statusClass = ch.ok ? 'alert-test-result--ok' : 'alert-test-result--fail';
     const statusLabel = ch.ok ? '成功' : '失败';
-    const errorLine = ch.error
-      ? `<span class="alert-test-result__error">${ch.error}</span>`
-      : '';
+    const errorLine = ch.error ? true : false;
     return `
       <div class="alert-test-result ${statusClass}">
-        <span><strong>${ch.channelName}</strong> · ${info.label}</span>
+        <span><strong>${escapeHtml(ch.channelName)}</strong> · ${escapeHtml(info.label)}</span>
         <span class="chip ${ch.ok ? 'chip--success' : 'chip--danger'}">${statusLabel}</span>
-        ${errorLine}
+        ${errorLine ? `<span class="alert-test-result__error">${escapeHtml(ch.error)}</span>` : ''}
       </div>
     `;
   }).join('');

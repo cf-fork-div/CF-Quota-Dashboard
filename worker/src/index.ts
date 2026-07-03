@@ -31,6 +31,7 @@ import {
   saveSnapshot,
   sortSnapshotsByAccountOrder,
   toggleChannel,
+  tryAcquireSnapshotRefreshLock,
   updateAccount,
   updateChannel,
   ALLOWED_REFRESH_INTERVALS,
@@ -42,19 +43,56 @@ import { sendQuotaAlert, sendTestAlerts, sendTestNotification } from './notifier
 import {
   buildClearSessionCookie,
   buildSessionCookie,
+  checkLoginRateLimit,
+  clearLoginAttempts,
   createSession,
   deleteSession,
   getAdminUsername,
+  getClientIp,
   getPublicApiToken,
   isAuthConfigured,
   parseSessionCookie,
+  recordLoginFailure,
   requireAuth,
   validateSession,
+  verifyPassword,
 } from './auth';
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.use('/api/*', cors({ credentials: true, origin: (origin) => origin ?? '*' }));
+function resolveCorsOrigin(env: Env, requestOrigin: string | undefined, requestUrl: string): string | null {
+  const allowed = env.ALLOWED_ORIGIN?.trim();
+  if (allowed) {
+    return requestOrigin === allowed ? allowed : null;
+  }
+  if (!requestOrigin) return null;
+  const url = new URL(requestUrl);
+  const sameOrigin = `${url.protocol}//${url.host}`;
+  return requestOrigin === sameOrigin ? requestOrigin : null;
+}
+
+app.use('*', async (c, next) => {
+  await next();
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  c.header(
+    'Content-Security-Policy-Report-Only',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:",
+  );
+});
+
+app.use('/api/*', async (c, next) => {
+  const origin = c.req.header('Origin');
+  const allowedOrigin = resolveCorsOrigin(c.env, origin, c.req.url);
+  if (origin && !allowedOrigin) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+  return cors({
+    credentials: true,
+    origin: allowedOrigin ?? '',
+  })(c, next);
+});
 
 async function getCheckIntervalMinutes(env: Env): Promise<number> {
   const config = await getDashboardConfig(env.KV);
@@ -89,8 +127,12 @@ async function getSnapshotWithOptionalRefresh(
 
   if (hasCachedData) {
     if (stale) {
-      ctx.waitUntil(runQuotaFetch(env, { force: true }));
-      return { ...snapshot!, stale: true, refreshing: true };
+      const canRefresh = await tryAcquireSnapshotRefreshLock(env.KV);
+      if (canRefresh) {
+        ctx.waitUntil(runQuotaFetch(env, { force: true }));
+        return { ...snapshot!, stale: true, refreshing: true };
+      }
+      return { ...snapshot!, stale: true, refreshing: false };
     }
     return { ...snapshot!, stale: false, refreshing: false };
   }
@@ -144,14 +186,26 @@ app.post('/api/login', async (c) => {
     return c.json({ error: 'Auth not configured. Set PASSWORD in Worker vars.' }, 503);
   }
 
+  const clientIp = getClientIp(c);
+  const rateLimit = await checkLoginRateLimit(c.env.KV, clientIp);
+  if (!rateLimit.allowed) {
+    return c.json(
+      { error: 'Too many login attempts', retryAfterSeconds: rateLimit.retryAfterSeconds },
+      429,
+    );
+  }
+
   const body = await c.req.json<{ password?: string }>();
   const expectedPass = c.env.PASSWORD!.trim();
   const submitted = body.password?.trim() ?? '';
 
-  if (!submitted || submitted !== expectedPass) {
+  const valid = await verifyPassword(submitted, expectedPass);
+  if (!valid) {
+    await recordLoginFailure(c.env.KV, clientIp);
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 
+  await clearLoginAttempts(c.env.KV, clientIp);
   const sessionToken = await createSession(c.env.KV, getAdminUsername(c.env));
   c.header('Set-Cookie', buildSessionCookie(sessionToken));
   return c.json({ ok: true, username: getAdminUsername(c.env) });
@@ -191,7 +245,7 @@ app.get('/api/public/token', requireAuth, async (c) => {
   return c.json({ token, hint: 'Use GET /api/public/snapshot?token=...' });
 });
 
-app.get('/api/accounts', async (c) => {
+app.get('/api/accounts', requireAuth, async (c) => {
   const threshold = getAlertThreshold(c.env.ALERT_THRESHOLD);
   const [accounts, channels] = await Promise.all([
     getAccounts(c.env.KV),
@@ -425,7 +479,7 @@ function validateChannelBody(body: {
   return null;
 }
 
-app.get('/api/channels', async (c) => {
+app.get('/api/channels', requireAuth, async (c) => {
   const channels = await getChannels(c.env.KV);
   return c.json(channels.map(maskChannel));
 });
