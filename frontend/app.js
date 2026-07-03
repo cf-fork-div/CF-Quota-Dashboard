@@ -1,5 +1,4 @@
 import { setupNavAuth, authFetch, parseJsonResponse, redirectToLogin } from './auth.js';
-import { startRateLimitCountdown } from './rate-limit.js';
 
 const API_BASE = window.location.origin;
 
@@ -307,107 +306,6 @@ function truncateAccountId(accountId) {
   const hidden = accountId.length - 10;
   const maskLen = Math.min(hidden, 6);
   return `${accountId.slice(0, 4)}${'x'.repeat(maskLen)}${accountId.slice(-6)}`;
-}
-
-const CHANNEL_TYPE_LABELS = {
-  wecom: '企业微信',
-  feishu: '飞书',
-  dingtalk: '钉钉',
-  webhook: 'Webhook',
-  telegram: 'Telegram',
-  email: 'Email',
-};
-
-function renderAdminAlertTestResults(container, channels) {
-  if (!container) return;
-  if (!channels?.length) {
-    container.classList.add('hidden');
-    container.innerHTML = '';
-    return;
-  }
-
-  container.classList.remove('hidden');
-  container.innerHTML = channels.map((ch) => {
-    const typeLabel = CHANNEL_TYPE_LABELS[ch.channelType] || ch.channelType;
-    const statusClass = ch.ok ? 'alert-test-result--ok' : 'alert-test-result--fail';
-    const statusLabel = ch.ok ? '成功' : '失败';
-    const errorLine = ch.error
-      ? `<span class="alert-test-result__error">${ch.error}</span>`
-      : '';
-    return `
-      <div class="alert-test-result ${statusClass}">
-        <span><strong>${ch.channelName}</strong> · ${typeLabel}</span>
-        <span class="chip ${ch.ok ? 'chip--success' : 'chip--danger'}">${statusLabel}</span>
-        ${errorLine}
-      </div>
-    `;
-  }).join('');
-}
-
-async function sendAdminTestAlert() {
-  const messageEl = document.getElementById('alert-test-message');
-  const resultsEl = document.getElementById('alert-test-results');
-  const buttonEl = document.getElementById('test-alert-btn');
-
-  if (messageEl) {
-    messageEl.textContent = '';
-    messageEl.className = 'form-message';
-  }
-  if (resultsEl) {
-    resultsEl.classList.add('hidden');
-    resultsEl.innerHTML = '';
-  }
-
-  if (buttonEl) {
-    buttonEl.disabled = true;
-    buttonEl.dataset.originalText = buttonEl.dataset.originalText || buttonEl.textContent;
-    buttonEl.textContent = '发送中…';
-  }
-
-  let rateLimited = false;
-  try {
-    const payload = editingAccountId ? { accountId: editingAccountId } : {};
-    const resp = await authFetch(`${API_BASE}/api/alerts/test`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await parseJsonResponse(resp);
-
-    if (resp.status === 429) {
-      rateLimited = true;
-      await startRateLimitCountdown({
-        buttonEl,
-        messageEl,
-        retryAfterSeconds: data.retryAfterSeconds,
-        buttonLabel: '发送测试告警',
-      });
-      return;
-    }
-    if (!resp.ok) throw new Error(data.error || '发送失败');
-
-    if (messageEl) {
-      messageEl.textContent = data.message || '测试告警已发送';
-      messageEl.className = `form-message ${data.ok ? 'form-message--success' : 'form-message--error'}`;
-    }
-    renderAdminAlertTestResults(resultsEl, data.channels);
-  } catch (err) {
-    if (messageEl) {
-      if (err.status === 401) {
-        messageEl.textContent = '需要登录，正在跳转…';
-        messageEl.className = 'form-message form-message--error';
-        redirectToLogin('/admin/settings');
-        return;
-      }
-      messageEl.textContent = err.message || '发送失败';
-      messageEl.className = 'form-message form-message--error';
-    }
-  } finally {
-    if (buttonEl && !rateLimited) {
-      buttonEl.disabled = false;
-      buttonEl.textContent = buttonEl.dataset.originalText || '发送测试告警';
-    }
-  }
 }
 
 function getLabelZh(key, metric) {
@@ -1427,9 +1325,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await requirePageAuth();
     settingsForm.addEventListener('submit', submitSettingsForm);
     loadDashboardSettings();
-
-    const testAlertBtn = document.getElementById('test-alert-btn');
-    if (testAlertBtn) testAlertBtn.addEventListener('click', sendAdminTestAlert);
   }
 });
 
