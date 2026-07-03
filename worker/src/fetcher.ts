@@ -6,7 +6,7 @@ const GRAPHQL_URL = 'https://api.cloudflare.com/client/v4/graphql';
 const REST_BASE = 'https://api.cloudflare.com/client/v4';
 
 /** Estimated external subrequests per account (GraphQL batches + REST). */
-export const SUBREQUESTS_PER_ACCOUNT = 6;
+export const SUBREQUESTS_PER_ACCOUNT = 7;
 
 function formatUtcDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -68,7 +68,7 @@ async function safeQuery<T>(
 interface CfApiResponse<T> {
   success?: boolean;
   result?: T;
-  result_info?: { total_pages?: number; page?: number };
+  result_info?: { total_pages?: number; page?: number; total_count?: number; count?: number };
   errors?: unknown[];
 }
 
@@ -259,6 +259,37 @@ async function fetchCoreMetrics(
   }
 
   return { acc: getAccount(result.data), errors: [] };
+}
+
+async function fetchD1DatabaseCount(
+  token: string,
+  accountId: string,
+): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const result = await safeQuery('d1-databases', async () => {
+    const first = await restRequestRaw<unknown[]>(
+      token,
+      `/accounts/${accountId}/d1/database?per_page=100`,
+    );
+    const totalCount = first.result_info?.total_count;
+    if (typeof totalCount === 'number') return totalCount;
+
+    let count = (first.result ?? []).length;
+    let page = 2;
+    while (page <= 100) {
+      const body = await restRequestRaw<unknown[]>(
+        token,
+        `/accounts/${accountId}/d1/database?per_page=100&page=${page}`,
+      );
+      const batch = body.result ?? [];
+      count += batch.length;
+      if (batch.length < 100) break;
+      page += 1;
+    }
+    return count;
+  });
+
+  if (!result.ok) return result;
+  return { ok: true, count: result.data };
 }
 
 async function fetchD1Metrics(
@@ -789,6 +820,7 @@ async function fetchAllMetrics(
   if (coreResult.errors.length) partialErrors.push(...coreResult.errors);
 
   const d1Result = await fetchD1Metrics(token, accountId, ranges.day, ranges.month);
+  const d1DatabasesResult = await fetchD1DatabaseCount(token, accountId);
   const kvResult = await fetchKvMetrics(token, accountId, ranges.dayDate, ranges.monthDate);
   const r2Result = await fetchR2Metrics(token, accountId, ranges.month);
   const nowIso = new Date().toISOString();
@@ -799,6 +831,7 @@ async function fetchAllMetrics(
   );
 
   if (!d1Result.ok) partialErrors.push(d1Result.error);
+  if (!d1DatabasesResult.ok) partialErrors.push(d1DatabasesResult.error);
   if (!kvResult.ok) partialErrors.push(kvResult.error);
   else if (kvResult.errors.length) partialErrors.push(...kvResult.errors);
   if (!r2Result.ok) partialErrors.push(r2Result.error);
@@ -862,6 +895,13 @@ async function fetchAllMetrics(
       limits.d1_storage_gb,
       d1Result.ok,
       d1Result.ok ? undefined : metricNote('d1', partialErrors),
+    ),
+    d1_databases: buildMetric(
+      'd1_databases',
+      d1DatabasesResult.ok ? d1DatabasesResult.count : 0,
+      limits.d1_databases,
+      d1DatabasesResult.ok,
+      d1DatabasesResult.ok ? undefined : metricNote('d1-databases', partialErrors),
     ),
     kv_reads: buildMetric(
       'kv_reads',

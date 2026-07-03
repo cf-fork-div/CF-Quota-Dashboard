@@ -26,6 +26,12 @@ export const DEFAULT_FREE_TIER_LIMITS: FreeTierLimitsConfig = {
     unit: 'GB',
     label: 'D1 Storage',
   },
+  d1_databases: {
+    limit: 10,
+    period: 'total',
+    unit: 'databases',
+    label: 'D1 Total Databases',
+  },
   kv_reads: {
     limit: 100_000,
     period: 'daily',

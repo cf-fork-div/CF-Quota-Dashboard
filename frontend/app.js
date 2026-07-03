@@ -2,37 +2,88 @@ import { setupNavAuth, authFetch, redirectToLogin } from './auth.js';
 
 const API_BASE = window.location.origin;
 
-const GROUPS = [
+const LABEL_ZH = {
+  workers_requests: 'Workers 请求',
+  pages_requests: 'Pages 请求',
+  workers_build_minutes: 'Workers 构建',
+  pages_builds: 'Pages 构建',
+  workflows_invocations: 'Workflows 调用',
+  browser_minutes: 'Browser 渲染',
+  ai_neurons: 'Workers AI',
+  d1_databases: 'D1 数据库',
+  d1_reads: 'D1 读取',
+  d1_writes: 'D1 写入',
+  d1_storage_gb: 'D1 存储',
+  kv_reads: 'KV 读取',
+  kv_writes: 'KV 写入',
+  kv_deletes: 'KV 删除',
+  kv_lists: 'KV 列表',
+  kv_storage_gb: 'KV 存储',
+  r2_storage_gb: 'R2 存储',
+  r2_class_a: 'R2 Class A',
+  r2_class_b: 'R2 Class B',
+  durable_objects_requests: 'DO 请求',
+  durable_objects_duration: 'DO 时长',
+  durable_objects_rows_read: 'DO 行读取',
+  durable_objects_rows_written: 'DO 行写入',
+  durable_objects_sql_storage_gb: 'DO SQL 存储',
+  queues_ops: 'Queues 操作',
+  hyperdrive_queries: 'Hyperdrive 查询',
+  vectorize_queried_dims: 'Vectorize 查询维度',
+  vectorize_stored_dims: 'Vectorize 存储维度',
+  analytics_engine_writes: 'Analytics 写入',
+};
+
+const PERIOD_ZH = { daily: '今日', monthly: '本月', total: '总计' };
+
+const SERVICE_GROUPS = [
   {
-    title: 'Compute & Runtime',
-    keys: [
-      'workers_requests', 'pages_requests', 'workers_build_minutes',
-      'pages_builds', 'workflows_invocations', 'browser_minutes', 'ai_neurons',
-    ],
+    id: 'kv',
+    title: 'KV',
+    keys: ['kv_reads', 'kv_writes', 'kv_deletes', 'kv_lists', 'kv_storage_gb'],
+    metaFn: () => '',
   },
   {
-    title: 'Storage & Databases',
+    id: 'd1',
+    title: 'D1',
+    keys: ['d1_reads', 'd1_writes', 'd1_storage_gb'],
+    metaFn: (quotas) => {
+      const db = quotas?.d1_databases;
+      if (db?.available) return `${db.used.toLocaleString()} 个数据库`;
+      return '';
+    },
+  },
+  {
+    id: 'r2',
+    title: 'R2',
+    keys: ['r2_storage_gb', 'r2_class_a', 'r2_class_b'],
+    metaFn: () => '',
+  },
+];
+
+const OTHER_GROUPS = [
+  {
+    title: '计算与运行时',
+    keys: ['workers_build_minutes', 'pages_builds', 'workflows_invocations', 'browser_minutes', 'ai_neurons'],
+  },
+  {
+    title: 'Durable Objects',
     keys: [
-      'd1_reads', 'd1_writes', 'd1_storage_gb',
-      'kv_reads', 'kv_writes', 'kv_deletes', 'kv_lists', 'kv_storage_gb',
-      'r2_storage_gb', 'r2_class_a', 'r2_class_b',
       'durable_objects_requests', 'durable_objects_duration',
       'durable_objects_rows_read', 'durable_objects_rows_written', 'durable_objects_sql_storage_gb',
     ],
   },
   {
-    title: 'Messaging & Data Plane',
+    title: '消息与数据平面',
     keys: ['queues_ops', 'hyperdrive_queries', 'vectorize_queried_dims', 'vectorize_stored_dims'],
   },
   {
-    title: 'Analytics',
+    title: '分析',
     keys: ['analytics_engine_writes'],
   },
 ];
 
-const SUMMARY_KEYS = [
-  'workers_requests',
-  'pages_requests',
+const SUMMARY_OTHER_KEYS = [
   'workers_build_minutes',
   'pages_builds',
   'd1_reads',
@@ -41,16 +92,43 @@ const SUMMARY_KEYS = [
   'ai_neurons',
 ];
 
-function barLevel(pct) {
-  if (pct >= 80) return 'high';
-  if (pct >= 60) return 'medium';
-  return 'low';
+function getLabelZh(key, metric) {
+  return LABEL_ZH[key] || metric?.label || key;
 }
 
-function pctClass(pct) {
-  if (pct >= 80) return 'metric-row__pct--high';
-  if (pct >= 60) return 'metric-row__pct--medium';
-  return '';
+function getGradientColor(percent) {
+  const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+  let r; let g; let b;
+  if (pct <= 50) {
+    const t = pct / 50;
+    r = Math.round(16 + (234 - 16) * t);
+    g = Math.round(185 + (179 - 185) * t);
+    b = Math.round(129 - 129 * t);
+  } else {
+    const t = (pct - 50) / 50;
+    r = Math.round(234 + (239 - 234) * t);
+    g = Math.round(179 - 179 * t);
+    b = Math.round(8 + (68 - 8) * t);
+  }
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function getGradientShadow(percent) {
+  const rgb = getGradientColor(percent).match(/\d+/g);
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.4)`;
+}
+
+function applyGradientColor(container, percent) {
+  if (!container) return;
+  const pct = Number(percent) || 0;
+  const color = getGradientColor(pct);
+  const shadow = getGradientShadow(pct);
+  container.style.setProperty('--gradient-color', color);
+  container.style.setProperty('--gradient-color-shadow', `0 0 20px ${shadow}`);
+  const bar = container.querySelector('.progress-bar-gradient');
+  if (bar && pct > 0) {
+    bar.style.setProperty('--bg-size', `${(100 / pct) * 100}%`);
+  }
 }
 
 function calcPct(used, limit) {
@@ -58,38 +136,169 @@ function calcPct(used, limit) {
   return Math.min(100, Math.round((used / limit) * 1000) / 10);
 }
 
-function formatUsed(metric) {
-  if (!metric.available) return 'N/A';
-  if (metric.unit === 'GB') return `${metric.used} / ${metric.limit} GB`;
-  if (metric.unit === 'bytes') return `${metric.used.toLocaleString()} B`;
-  return `${metric.used.toLocaleString()} / ${metric.limit.toLocaleString()} ${metric.unit}`;
+function formatValue(value, unit) {
+  if (unit === 'GB') return `${value} GB`;
+  if (unit === 'bytes') return `${value.toLocaleString()} B`;
+  return value.toLocaleString();
 }
 
-function renderMetric(key, metric) {
+function formatQuotaMeta(metric) {
+  if (!metric?.available) return '不可用';
+  const used = formatValue(metric.used, metric.unit);
+  const limit = formatValue(metric.limit, metric.unit);
+  const period = PERIOD_ZH[metric.period] || metric.period;
+  return `${used} / ${limit} · ${metric.pct}% · ${period}`;
+}
+
+function renderHeroSection(used, limit, pct, compact = false) {
+  const width = Math.min(100, pct);
+  return `
+    <div class="hero-section" data-hero-pct="${pct}">
+      <div class="hero-section__header">
+        <span class="hero-section__label">${compact ? '请求使用情况' : '总请求占比'}</span>
+        <span class="hero-section__pct">${pct}%</span>
+      </div>
+      <div class="progress-track progress-track--hero">
+        <div class="progress-bar-gradient" style="width:${width}%"></div>
+      </div>
+      <p class="hero-section__detail">${used.toLocaleString()} / ${limit.toLocaleString()} 总计请求</p>
+    </div>
+  `;
+}
+
+function renderMiniCards(workersUsed, pagesUsed) {
+  return `
+    <div class="mini-cards">
+      <div class="mini-card">
+        <span class="mini-card__icon">🔶</span>
+        <div class="mini-card__info">
+          <span class="mini-card__label">Workers 请求</span>
+          <span class="mini-card__value">${workersUsed.toLocaleString()}</span>
+        </div>
+      </div>
+      <div class="mini-card">
+        <span class="mini-card__icon">⚡</span>
+        <div class="mini-card__info">
+          <span class="mini-card__label">Pages 请求</span>
+          <span class="mini-card__value">${pagesUsed.toLocaleString()}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderQuotaRow(key, metric) {
   if (!metric) return '';
   const pct = metric.available ? metric.pct : 0;
   const width = metric.available ? Math.min(100, pct) : 0;
-  const note = metric.note ? `<p class="metric-row__note">${metric.note}</p>` : '';
+  const color = metric.available ? getGradientColor(pct) : 'transparent';
+  const note = metric.note ? `<p class="quota-row__note">${metric.note}</p>` : '';
   return `
-    <div class="metric-row">
-      <div class="metric-row__header">
-        <span class="metric-row__label">${metric.label}</span>
-        <span class="metric-row__pct ${metric.available ? pctClass(pct) : ''}">${metric.available ? `${pct}%` : 'unavailable'} · ${metric.period}</span>
+    <div class="quota-row">
+      <div class="quota-row__top">
+        <span class="quota-row__label">${getLabelZh(key, metric)}</span>
+        <span class="quota-row__meta">${formatQuotaMeta(metric)}</span>
       </div>
-      <div class="progress-track">
-        <div class="progress-fill progress-fill--${barLevel(pct)}" style="width:${width}%"></div>
+      <div class="quota-track">
+        <div class="quota-fill" style="width:${width}%;background:${color}"></div>
       </div>
-      <p class="metric-row__detail">${formatUsed(metric)}</p>
       ${note}
     </div>
   `;
 }
 
+function renderServiceCard(group, quotas) {
+  const rows = group.keys
+    .map((k) => renderQuotaRow(k, quotas[k]))
+    .filter(Boolean)
+    .join('');
+  if (!rows) return '';
+  const meta = group.metaFn(quotas);
+  const metaHtml = meta ? `<span class="service-card__meta">${meta}</span>` : '';
+  return `
+    <div class="service-card">
+      <div class="service-card__head">
+        <span class="service-card__title">${group.title}</span>
+        ${metaHtml}
+      </div>
+      ${rows}
+    </div>
+  `;
+}
+
+function renderServiceSection(quotas, collapsible = false) {
+  const cards = SERVICE_GROUPS
+    .map((g) => renderServiceCard(g, quotas))
+    .filter(Boolean)
+    .join('');
+  if (!cards) return '';
+  const inner = `<div class="service-cards">${cards}</div>`;
+  if (!collapsible) return inner;
+  return `
+    <details class="quota-details">
+      <summary class="quota-details__summary">
+        <span class="quota-details__title">存储服务配额</span>
+        <span class="quota-details__meta">KV / D1 / R2</span>
+      </summary>
+      <div class="quota-details__body">${inner}</div>
+    </details>
+  `;
+}
+
+function renderOtherSection(group, quotas, collapsible = false) {
+  const rows = group.keys
+    .map((k) => renderQuotaRow(k, quotas[k]))
+    .filter(Boolean)
+    .join('');
+  if (!rows) return '';
+  const inner = `<div class="quota-group">${rows}</div>`;
+  if (!collapsible) return `<div><h4 class="metric-group__title">${group.title}</h4>${inner}</div>`;
+  return `
+    <details class="quota-details">
+      <summary class="quota-details__summary">
+        <span class="quota-details__title">${group.title}</span>
+        <span class="quota-details__meta">${group.keys.length} 项指标</span>
+      </summary>
+      <div class="quota-details__body">${inner}</div>
+    </details>
+  `;
+}
+
+function aggregateRequestHero(accounts) {
+  const okAccounts = accounts.filter((a) => a.status === 'ok');
+  let workersUsed = 0;
+  let workersLimit = 0;
+  let pagesUsed = 0;
+  let pagesLimit = 0;
+  for (const acc of okAccounts) {
+    const w = acc.quotas?.workers_requests;
+    const p = acc.quotas?.pages_requests;
+    if (w?.available) {
+      workersUsed += w.used;
+      workersLimit += w.limit;
+    }
+    if (p?.available) {
+      pagesUsed += p.used;
+      pagesLimit += p.limit;
+    }
+  }
+  const totalUsed = workersUsed + pagesUsed;
+  const totalLimit = workersLimit + pagesLimit;
+  return {
+    totalUsed,
+    totalLimit,
+    pct: calcPct(totalUsed, totalLimit),
+    workersUsed,
+    pagesUsed,
+  };
+}
+
 function aggregateMetrics(accounts) {
   const okAccounts = accounts.filter((a) => a.status === 'ok');
   const metrics = {};
+  const hero = aggregateRequestHero(accounts);
 
-  for (const key of SUMMARY_KEYS) {
+  for (const key of SUMMARY_OTHER_KEYS) {
     let totalUsed = 0;
     let totalLimit = 0;
     let label = key;
@@ -124,9 +333,9 @@ function aggregateMetrics(accounts) {
 
   const alerts = [];
   for (const acc of okAccounts) {
-    for (const m of Object.values(acc.quotas ?? {})) {
+    for (const [key, m] of Object.entries(acc.quotas ?? {})) {
       if (m.available && m.pct >= 70) {
-        alerts.push({ account: acc.accountName, metric: m });
+        alerts.push({ account: acc.accountName, key, metric: m });
       }
     }
   }
@@ -135,55 +344,58 @@ function aggregateMetrics(accounts) {
     accountCount: accounts.length,
     okCount: okAccounts.length,
     errorCount: accounts.filter((a) => a.status === 'error').length,
+    hero,
     metrics,
     alerts,
   };
 }
 
+function renderStatusBadge(summary) {
+  const allOk = summary.errorCount === 0 && summary.okCount > 0;
+  const hasErrors = summary.errorCount > 0;
+  const cls = allOk ? 'status-badge status-badge--online' : hasErrors ? 'status-badge status-badge--error' : 'status-badge';
+  const label = allOk ? '系统正常' : hasErrors ? `${summary.errorCount} 个账号异常` : '等待数据';
+  return `
+    <div class="${cls}">
+      <span class="status-badge__dot"></span>
+      <span>${label}</span>
+    </div>
+  `;
+}
+
 function renderSummaryCard(summary) {
-  const metricRows = SUMMARY_KEYS
+  const { hero } = summary;
+  const otherRows = SUMMARY_OTHER_KEYS
     .filter((k) => summary.metrics[k])
-    .map((k) => {
-      const m = summary.metrics[k];
-      const pct = m.pct;
-      return `
-        <div class="metric-row">
-          <div class="metric-row__header">
-            <span class="metric-row__label">${m.label}</span>
-            <span class="metric-row__pct ${pctClass(pct)}">${pct}%</span>
-          </div>
-          <div class="progress-track progress-track--sm">
-            <div class="progress-fill progress-fill--${barLevel(pct)}" style="width:${Math.min(100, pct)}%"></div>
-          </div>
-          <p class="metric-row__detail">${formatUsed(m)} · ${summary.okCount} accounts</p>
-        </div>
-      `;
-    })
+    .map((k) => renderQuotaRow(k, summary.metrics[k]))
     .join('');
 
   const alertBlock = summary.alerts.length
     ? `<div class="alert-box alert-box--danger">
-        <p><strong>${summary.alerts.length} metric(s) ≥ 70%</strong></p>
+        <p><strong>${summary.alerts.length} 项指标 ≥ 70%</strong></p>
         <ul>
           ${summary.alerts.slice(0, 8).map((a) =>
-            `<li>${a.account}: ${a.metric.label} (${a.metric.pct}%)</li>`,
+            `<li>${a.account}：${getLabelZh(a.key, a.metric)} (${a.metric.pct}%)</li>`,
           ).join('')}
-          ${summary.alerts.length > 8 ? `<li>…and ${summary.alerts.length - 8} more</li>` : ''}
+          ${summary.alerts.length > 8 ? `<li>…还有 ${summary.alerts.length - 8} 项</li>` : ''}
         </ul>
       </div>`
     : '';
 
   return `
     <article class="col-span-full glass-card glass-card--hero">
-      <div class="mb-4">
-        <h2 class="glass-card__title">Cross-Account Summary</h2>
-        <p class="glass-card__subtitle">
-          ${summary.accountCount} account(s) · ${summary.okCount} OK · ${summary.errorCount} error
-        </p>
+      <div class="summary-card__head">
+        <div>
+          <h2 class="glass-card__title">跨账号总配额</h2>
+          <p class="glass-card__subtitle">
+            ${summary.accountCount} 个账号 · ${summary.okCount} 正常 · ${summary.errorCount} 异常
+          </p>
+        </div>
+        ${renderStatusBadge(summary)}
       </div>
-      <div class="summary-grid">
-        ${metricRows}
-      </div>
+      ${renderHeroSection(hero.totalUsed, hero.totalLimit, hero.pct)}
+      ${renderMiniCards(hero.workersUsed, hero.pagesUsed)}
+      ${otherRows ? `<div class="summary-other">${otherRows}</div>` : ''}
       ${alertBlock}
     </article>
   `;
@@ -191,26 +403,37 @@ function renderSummaryCard(summary) {
 
 function renderAccountCard(account) {
   const statusBadge = account.status === 'error'
-    ? `<span class="chip chip--danger">Error</span>`
-    : `<span class="chip chip--success">OK</span>`;
+    ? `<span class="chip chip--danger">异常</span>`
+    : `<span class="chip chip--success">正常</span>`;
 
   const errorBlock = account.error
     ? `<p class="text-error mb-3">${account.error}</p>`
     : '';
 
-  const groups = GROUPS.map((g) => {
-    const metrics = g.keys
-      .map((k) => renderMetric(k, account.quotas[k]))
-      .filter(Boolean)
-      .join('');
-    if (!metrics) return '';
-    return `
-      <div>
-        <h4 class="metric-group__title">${g.title}</h4>
-        ${metrics}
-      </div>
-    `;
-  }).join('');
+  let heroBlock = '';
+  let miniBlock = '';
+  if (account.status === 'ok' && account.quotas) {
+    const w = account.quotas.workers_requests;
+    const p = account.quotas.pages_requests;
+    const workersUsed = w?.available ? w.used : 0;
+    const pagesUsed = p?.available ? p.used : 0;
+    const workersLimit = w?.available ? w.limit : 0;
+    const pagesLimit = p?.available ? p.limit : 0;
+    const totalUsed = workersUsed + pagesUsed;
+    const totalLimit = workersLimit + pagesLimit;
+    const pct = calcPct(totalUsed, totalLimit);
+    heroBlock = renderHeroSection(totalUsed, totalLimit, pct, true);
+    miniBlock = renderMiniCards(workersUsed, pagesUsed);
+  }
+
+  const serviceSection = account.quotas
+    ? renderServiceSection(account.quotas, true)
+    : '';
+
+  const otherSections = OTHER_GROUPS
+    .map((g) => renderOtherSection(g, account.quotas ?? {}, true))
+    .filter(Boolean)
+    .join('');
 
   return `
     <article class="glass-card glass-card--interactive">
@@ -220,9 +443,21 @@ function renderAccountCard(account) {
       </div>
       <p class="list-item__meta mb-2">${account.accountId}</p>
       ${errorBlock}
-      ${groups}
+      ${heroBlock}
+      ${miniBlock}
+      ${serviceSection}
+      ${otherSections}
     </article>
   `;
+}
+
+function applyHeroGradients(root) {
+  if (!root) return;
+  requestAnimationFrame(() => {
+    root.querySelectorAll('[data-hero-pct]').forEach((el) => {
+      applyGradientColor(el, parseFloat(el.dataset.heroPct));
+    });
+  });
 }
 
 async function fetchSnapshot() {
@@ -235,7 +470,7 @@ async function refreshQuotas() {
   const statsEl = document.getElementById('refresh-stats');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Refreshing…';
+    btn.textContent = '刷新中…';
   }
   if (statsEl) statsEl.textContent = '';
   try {
@@ -244,22 +479,22 @@ async function refreshQuotas() {
     await loadDashboard();
     if (statsEl && data.refreshStats) {
       const s = data.refreshStats;
-      statsEl.textContent = `Refresh: ${s.refreshed} updated, ${s.cached} cached, ${s.failed} failed, ${s.skippedByLimit} skipped (budget), ${s.subrequestsUsed} subrequests used`;
+      statsEl.textContent = `刷新：${s.refreshed} 更新，${s.cached} 缓存，${s.failed} 失败，${s.skippedByLimit} 跳过（预算），${s.subrequestsUsed} 次子请求`;
       statsEl.className = 'page-meta';
     }
   } catch (err) {
     if (err.status === 401) {
-      if (confirm('Login required for manual refresh. Go to login page?')) {
+      if (confirm('手动刷新需要登录，是否前往登录页？')) {
         redirectToLogin('/');
       }
     } else if (statsEl) {
-      statsEl.textContent = err.message || 'Refresh failed';
+      statsEl.textContent = err.message || '刷新失败';
       statsEl.className = 'form-message form-message--error';
     }
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = 'Manual Refresh';
+      btn.textContent = '手动刷新';
     }
   }
 }
@@ -272,7 +507,7 @@ async function loadDashboard() {
   if (updated) {
     updated.textContent = data.lastUpdated
       ? new Date(data.lastUpdated).toLocaleString()
-      : 'Never';
+      : '从未更新';
   }
 
   if (!grid) return;
@@ -281,14 +516,15 @@ async function loadDashboard() {
     grid.innerHTML = `
       <div class="empty-state">
         <div class="empty-state__icon">📊</div>
-        <p>No quota data yet.</p>
-        <p><a href="/admin">Add an account</a> or click Manual Refresh.</p>
+        <p>暂无配额数据。</p>
+        <p><a href="/admin">添加账号</a> 或点击「手动刷新」。</p>
       </div>`;
     return;
   }
 
   const summary = aggregateMetrics(data.accounts);
   grid.innerHTML = renderSummaryCard(summary) + data.accounts.map(renderAccountCard).join('');
+  applyHeroGradients(grid);
 }
 
 let editingAccountId = null;
