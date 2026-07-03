@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange.svg)](https://workers.cloudflare.com/)
 [![Hono](https://img.shields.io/badge/Hono-Framework-e36002.svg)](https://hono.dev/)
-[![GitHub stars](https://img.shields.io/github/stars/cf-fork-div/CF-Quota-Dashboard?style=flat&logo=github)](https://github.com/cf-fork-div/CF-Quota-Dashboard)
+[![GitHub stars](https://img.shields.io/github/stars/jia0327/CF-Quota-Dashboard?style=flat&logo=github)](https://github.com/jia0327/CF-Quota-Dashboard)
 
 </div>
 

@@ -43,7 +43,7 @@
 # 运行前修改下方密码、API Token 与语言（zh/en）。
 # 运行中会打开浏览器完成 wrangler 登录。
 # 部署成功后脚本会自动添加当前 Cloudflare 账号为监控账号。
-git clone https://github.com/cf-fork-div/CF-Quota-Dashboard.git
+git clone https://github.com/jia0327/CF-Quota-Dashboard.git
 cd CF-Quota-Dashboard
 npm install
 export QUICK_DEPLOY_PASSWORD='your-strong-password'  # ← 修改密码（/admin 登录用）
@@ -58,7 +58,7 @@ npm run quick-deploy
 # 运行前修改下方密码、API Token 与语言（zh/en）。
 # 运行中会打开浏览器完成 wrangler 登录。
 # 部署成功后脚本会自动添加当前 Cloudflare 账号为监控账号。
-git clone https://github.com/cf-fork-div/CF-Quota-Dashboard.git
+git clone https://github.com/jia0327/CF-Quota-Dashboard.git
 cd CF-Quota-Dashboard
 npm install
 $env:QUICK_DEPLOY_PASSWORD='your-strong-password'  # ← 修改密码（/admin 登录用）
@@ -76,7 +76,7 @@ npm run quick-deploy
 
 ### 2.1 Fork 并配置 Secrets
 
-1. Fork [cf-fork-div/CF-Quota-Dashboard](https://github.com/cf-fork-div/CF-Quota-Dashboard)
+1. Fork [jia0327/CF-Quota-Dashboard](https://github.com/jia0327/CF-Quota-Dashboard)
 2. 获取 Account ID：Dashboard 右侧栏
 3. 仓库 **Settings → Secrets and variables → Actions** 添加：
 
