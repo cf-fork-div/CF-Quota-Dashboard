@@ -115,18 +115,20 @@
 
 ## 🛠️ 部署指南
 
-**一键部署（推荐）：** 点击页首 [Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/?url=https://github.com/cf-fork-div/CF-Quota-Dashboard) 按钮，Dashboard 会从仓库根目录读取 `wrangler.toml` 并打包 `frontend/` 静态资源。
+**一键部署（推荐）：** 点击页首 [Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/?url=https://github.com/cf-fork-div/CF-Quota-Dashboard) 按钮。Cloudflare 会从**仓库根目录**读取 `wrangler.toml` 与 `package.json`，自动克隆并部署 Worker（含 `frontend/` 静态资源）。
 
 ```bash
 git clone https://github.com/cf-fork-div/CF-Quota-Dashboard.git
 cd CF-Quota-Dashboard
-npm install --prefix worker
+npm install
 # 创建 KV → 替换根目录 wrangler.toml 中的 YOUR_KV_NAMESPACE_ID
 npx wrangler secret put PASSWORD --config wrangler.toml
 npm run deploy
 ```
 
 生产环境需绑定 KV 命名空间（`KV`）并设置 `PASSWORD` Secret。主配置文件为仓库根目录 **`wrangler.toml`**；在 `worker/` 目录内单独部署时仍可使用 **`worker/wrangler.toml`**。
+
+**Dashboard 一键部署报「无法获取存储库内容」？** 多为网络或 GitHub 授权问题，而非仓库缺文件。请确认使用公开仓库 [cf-fork-div/CF-Quota-Dashboard](https://github.com/cf-fork-div/CF-Quota-Dashboard)（非 `jia0327` fork）；中国大陆访问时 GitHub API 可能超时，可改用下方 CLI / GitHub Actions，或挂代理后重试。详见 [docs/DEPLOY.md#dashboard-一键部署故障排查](docs/DEPLOY.md#dashboard-一键部署故障排查)。
 
 👉 **完整步骤、环境变量、GitHub Actions 与故障排查见 [docs/DEPLOY.md](docs/DEPLOY.md)**
 

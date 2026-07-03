@@ -3,8 +3,27 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "postinstall": "npm install --prefix worker --no-fund --no-audit",
     "typecheck": "npm run typecheck --prefix worker",
-    "deploy": "npm run deploy --prefix worker -- --config ../wrangler.toml",
-    "dev": "npm run dev --prefix worker -- --config ../wrangler.toml"
+    "deploy": "wrangler deploy --config wrangler.toml",
+    "dev": "wrangler dev --config wrangler.toml"
+  },
+  "dependencies": {
+    "hono": "^4.7.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250317.0",
+    "typescript": "^5.8.2",
+    "wrangler": "^4.1.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "KV": {
+        "description": "KV namespace for accounts, quota snapshots, and notification channels. Binding name **must** be `KV` (uppercase)."
+      },
+      "PASSWORD": {
+        "description": "Admin login code for `/admin`. Generate with `openssl rand -base64 24`. Required in production."
+      }
+    }
   }
 }

@@ -31,10 +31,24 @@ README 顶部的 **Deploy to Cloudflare Workers** 按钮会克隆完整仓库并
 https://deploy.workers.cloudflare.com/?url=https://github.com/cf-fork-div/CF-Quota-Dashboard
 ```
 
-根配置要点：
+根配置要点（仓库须同时包含）：
+
+| 文件 | 作用 |
+|------|------|
+| `wrangler.toml` | Worker 入口 `worker/src/index.ts`、KV/Assets/Cron 绑定 |
+| `package.json` | 根目录 npm 项目（含 `wrangler` 依赖与 `deploy` 脚本） |
+| `frontend/` | 静态资源目录（`[assets] directory = "frontend"`） |
 
 - `main = "worker/src/index.ts"`
 - `[assets] directory = "frontend"`（相对仓库根目录，非 `../frontend`）
+
+**Deploy 按钮 URL（官方格式）：**
+
+```
+https://deploy.workers.cloudflare.com/?url=https://github.com/cf-fork-div/CF-Quota-Dashboard
+```
+
+> 必须使用 **`cf-fork-div`** 公开仓库。`origin` 指向 `jia0327` 的本地 clone 不会自动同步到 Deploy 按钮所用的远程。
 
 部署完成后在 Dashboard 中：
 
@@ -42,7 +56,29 @@ https://deploy.workers.cloudflare.com/?url=https://github.com/cf-fork-div/CF-Quo
 2. 添加加密变量 `PASSWORD`
 3. 确认 Cron `0 */6 * * *` 已生效（通常由 `wrangler.toml` 同步）
 
-> 旧版仅在 `worker/wrangler.toml` 且 assets 指向 `../frontend` 时，Dashboard「克隆存储库」会因找不到配置或 frontend 路径错误而失败；现已通过根目录 `wrangler.toml` 修复。
+> 旧版仅在 `worker/wrangler.toml` 且 assets 指向 `../frontend` 时，Dashboard「克隆存储库」会因找不到配置或 frontend 路径错误而失败；现已通过根目录 `wrangler.toml` + 根目录 `package.json` 修复。
+
+### Dashboard 一键部署故障排查
+
+报错 **「无法获取存储库内容」** / **「The repository cannot be accessed」** 时，按下列顺序排查：
+
+| # | 检查项 | 说明 |
+|---|--------|------|
+| 1 | 仓库 URL | Deploy 按钮必须指向 [cf-fork-div/CF-Quota-Dashboard](https://github.com/cf-fork-div/CF-Quota-Dashboard)，且仓库为 **Public** |
+| 2 | 根目录文件 | `master` 分支须存在 `wrangler.toml` 与 `package.json`（可在 GitHub 网页根目录确认） |
+| 3 | 推送目标 | 本地 `git push` 默认 `origin`（`jia0327`）**不会**更新 Deploy 按钮仓库；需 `git push cf-fork-div master` |
+| 4 | GitHub App 授权 | [GitHub → Settings → Applications](https://github.com/settings/installations) → **Cloudflare Workers and Pages** → 确认已授权；异常时卸载后从 Dashboard 重新 Connect to Git |
+| 5 | 中国大陆网络 | Cloudflare Dashboard 需通过 GitHub API 拉取仓库元数据；访问 `api.github.com` / `raw.githubusercontent.com` 不稳定时会直接报「无法获取存储库内容」。**改用 CLI 或 GitHub Actions 部署**（见下文），或挂代理后重试 Deploy 按钮 |
+| 6 | 备用方案 | `git clone` + `npm install` + `npm run deploy`，或 Fork 后配置 Actions Secrets 自动部署 |
+
+验证仓库可被公开读取：
+
+```bash
+curl -sI https://raw.githubusercontent.com/cf-fork-div/CF-Quota-Dashboard/master/wrangler.toml
+curl -sI https://raw.githubusercontent.com/cf-fork-div/CF-Quota-Dashboard/master/package.json
+```
+
+两条均应返回 `HTTP/1.1 200 OK`。
 
 ---
 
@@ -53,7 +89,7 @@ https://deploy.workers.cloudflare.com/?url=https://github.com/cf-fork-div/CF-Quo
 ```bash
 git clone https://github.com/cf-fork-div/CF-Quota-Dashboard.git
 cd CF-Quota-Dashboard
-npm install --prefix worker
+npm install
 ```
 
 ### 2. 创建 KV 命名空间
