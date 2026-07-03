@@ -1161,13 +1161,13 @@ function renderAdminAccountItem(account) {
 
   return `
     <div class="account-card account-card--sortable" data-id="${account.id}" draggable="false">
-      <button type="button" class="account-drag-handle" aria-label="拖动排序" title="拖动排序">
-        <span class="drag-handle-dots" aria-hidden="true">
-          <span></span><span></span><span></span><span></span><span></span><span></span>
-        </span>
-      </button>
       <div class="account-card__panel">
         <div class="account-card__header">
+          <button type="button" class="account-drag-handle" aria-label="拖动排序" title="拖动排序">
+            <span class="drag-handle-dots" aria-hidden="true">
+              <span></span><span></span><span></span><span></span><span></span><span></span>
+            </span>
+          </button>
           <h3 class="account-card__title">${account.name}</h3>
           <span class="chip ${account.enabled ? 'chip--success' : 'chip--muted'}">
             ${account.enabled ? '已启用' : '已禁用'}

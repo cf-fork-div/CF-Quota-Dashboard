@@ -2325,10 +2325,6 @@ select.glass-input option {
 }
 
 .account-card--sortable {
-  display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr);
-  gap: 0.5rem;
-  align-items: stretch;
   min-width: 0;
   height: 100%;
 }
@@ -2355,13 +2351,13 @@ select.glass-input option {
 
 .account-card__header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.875rem;
 }
 
 .account-card__header .account-card__title {
+  flex: 1;
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
@@ -2371,6 +2367,10 @@ select.glass-input option {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.account-card__header .chip {
+  flex-shrink: 0;
 }
 
 .account-card__body {
@@ -2486,18 +2486,14 @@ select.glass-input option {
   filter: brightness(1.1);
 }
 
-.account-card--sortable .account-drag-handle {
-  align-self: center;
-}
-
 .account-drag-handle {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  min-width: 2rem;
-  height: 2.5rem;
+  width: 1.75rem;
+  min-width: 1.75rem;
+  height: 1.75rem;
   padding: 0;
   margin: 0;
   border: none;
