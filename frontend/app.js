@@ -200,22 +200,39 @@ function renderAlertRulesGrid(alertRules = []) {
           <input type="checkbox" name="alertService" value="${group.id}" ${state.enabled ? 'checked' : ''} />
           <span class="alert-service-row__title">${group.title}</span>
         </label>
-        <div class="alert-service-row__threshold">
-          <input
-            type="number"
-            name="alertThreshold_${group.id}"
-            class="glass-input glass-input--sm alert-threshold-input"
-            min="1"
-            max="100"
-            step="1"
-            value="${state.thresholdPercent}"
-            aria-label="${group.title} 告警阈值"
-          />
-          <span class="alert-service-row__unit">%</span>
-        </div>
+        <input
+          type="number"
+          name="alertThreshold_${group.id}"
+          class="glass-input glass-input--sm alert-threshold-input"
+          min="1"
+          max="100"
+          step="1"
+          value="${state.thresholdPercent}"
+          aria-label="${group.title} 告警阈值"
+        />
+        <span class="alert-service-row__unit">%</span>
       </div>
     `;
   }).join('');
+}
+
+function bindAlertRulesToolbar() {
+  const grid = document.getElementById('alert-rules-grid');
+  const selectAll = document.getElementById('alert-select-all');
+  const selectNone = document.getElementById('alert-select-none');
+  if (!grid) return;
+
+  selectAll?.addEventListener('click', () => {
+    grid.querySelectorAll('input[name="alertService"]').forEach((cb) => {
+      cb.checked = true;
+    });
+  });
+
+  selectNone?.addEventListener('click', () => {
+    grid.querySelectorAll('input[name="alertService"]').forEach((cb) => {
+      cb.checked = false;
+    });
+  });
 }
 
 function setAlertFormValues(alertRules) {
@@ -1327,6 +1344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await requirePageAuth();
     await loadAlertServiceGroups();
     renderAlertRulesGrid();
+    bindAlertRulesToolbar();
     form.addEventListener('submit', submitAccountForm);
     loadAdmin();
 

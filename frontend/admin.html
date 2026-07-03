@@ -62,9 +62,15 @@
 
         <fieldset class="alert-settings">
           <legend class="form-label">告警设置</legend>
-          <p class="form-hint mb-3">
-            按服务启用用量百分比告警；达到阈值后通过已启用的通知渠道推送。默认不启用，需手动勾选。
-          </p>
+          <div class="alert-rules-header">
+            <p class="form-hint alert-rules-hint">
+              按服务启用用量百分比告警；达到阈值后通过已启用的通知渠道推送。默认不启用，需手动勾选。
+            </p>
+            <div class="alert-rules-toolbar">
+              <button type="button" id="alert-select-all" class="btn btn-ghost btn-sm">全选</button>
+              <button type="button" id="alert-select-none" class="btn btn-ghost btn-sm">全不选</button>
+            </div>
+          </div>
           <div id="alert-rules-grid" class="alert-rules-grid">
             <p class="form-hint">加载服务列表…</p>
           </div>
