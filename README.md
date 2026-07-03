@@ -221,7 +221,7 @@ GET /api/public/snapshot?token=<token>
 |------|------|
 | 运行时 | Cloudflare Workers（Hono） |
 | 存储 | Cloudflare KV（AES-GCM 字段加密） |
-| 前端 | 原生 HTML + CSS + JS（Workers Assets）；管理页使用 Tailwind CDN |
+| 前端 | 原生 HTML + CSS + JS（Workers Assets） |
 | 数据采集 | Cloudflare GraphQL Analytics + REST API |
 | CI/CD | GitHub Actions + Wrangler |
 
@@ -233,9 +233,9 @@ GET /api/public/snapshot?token=<token>
 |------|------|
 | ✅ 已完成 | 35 项指标监控、多账号 KV、多通道告警、Vectorize、访问触发刷新 |
 | ✅ 已完成 | KV 敏感字段静态加密（`ENCRYPTION_KEY` / `PASSWORD` 派生） |
+| ✅ 已完成 | 管理页移除 Tailwind CDN，统一原生 CSS |
 | ✅ 已完成 | 按账号告警规则、UTC 日/月去重、公开 API |
 | 🔲 计划中 | 历史用量趋势图表 |
-| 🔲 计划中 | 管理页移除 Tailwind CDN，统一原生 CSS |
 | 🔲 计划中 | 更多通知渠道与告警模板 |
 
 ---
