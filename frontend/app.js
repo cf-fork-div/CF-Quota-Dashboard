@@ -1063,8 +1063,10 @@ function renderAdminAccountItem(account) {
 
   return `
     <div class="list-item list-item--sortable" data-id="${account.id}" draggable="false">
-      <button type="button" class="list-item__drag-handle" aria-label="拖动排序" title="拖动排序">
-        <span class="drag-dots" aria-hidden="true"></span>
+      <button type="button" class="account-drag-handle" aria-label="拖动排序" title="拖动排序">
+        <span class="drag-handle-dots" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+        </span>
       </button>
       <div class="list-item__body">
         <div class="list-item__content">
@@ -1095,7 +1097,7 @@ function setupAccountDragDrop(list, getAccountIds, onReordered) {
 
   list.querySelectorAll('.list-item').forEach((item) => {
     const id = item.dataset.id;
-    const handle = item.querySelector('.list-item__drag-handle');
+    const handle = item.querySelector('.account-drag-handle');
 
     handle?.addEventListener('mousedown', () => {
       item.draggable = true;
