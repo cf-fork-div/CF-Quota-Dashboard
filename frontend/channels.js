@@ -52,27 +52,37 @@ const TYPE_INFO = {
 
 const CONFIG_FIELDS = {
   wecom: [
-    { key: 'webhookUrl', label: 'Webhook URL', type: 'password', required: true, placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...' },
+    { key: 'webhookUrl', label: 'Webhook URL', type: 'password', required: true, placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...', secret: true },
   ],
   feishu: [
-    { key: 'webhookUrl', label: 'Webhook URL', type: 'password', required: true, placeholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/...' },
+    { key: 'webhookUrl', label: 'Webhook URL', type: 'password', required: true, placeholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/...', secret: true },
   ],
   dingtalk: [
-    { key: 'webhookUrl', label: 'Webhook URL', type: 'password', required: true, placeholder: 'https://oapi.dingtalk.com/robot/send?access_token=...' },
+    { key: 'webhookUrl', label: 'Webhook URL', type: 'password', required: true, placeholder: 'https://oapi.dingtalk.com/robot/send?access_token=...', secret: true },
   ],
   webhook: [
-    { key: 'webhookUrl', label: 'Webhook URL', type: 'password', required: true, placeholder: 'https://your-service.com/webhook' },
+    { key: 'webhookUrl', label: 'Webhook URL', type: 'password', required: true, placeholder: 'https://your-service.com/webhook', secret: true },
     { key: 'customHeaders', label: 'Custom Headers (JSON)', type: 'text', required: false, placeholder: '{"Authorization":"Bearer xxx"}' },
   ],
   telegram: [
-    { key: 'botToken', label: 'Bot Token', type: 'password', required: true, placeholder: '123456:ABC-DEF...' },
+    { key: 'botToken', label: 'Bot Token', type: 'password', required: true, placeholder: '123456:ABC-DEF...', secret: true },
     { key: 'chatId', label: 'Chat ID', type: 'text', required: true, placeholder: '-1001234567890' },
   ],
   email: [
     { key: 'to', label: '收件人邮箱', type: 'email', required: true, placeholder: 'alerts@example.com' },
-    { key: 'webhookUrl', label: '邮件中继 Webhook URL', type: 'password', required: true, placeholder: 'https://api.resend.com/emails or custom relay' },
+    { key: 'webhookUrl', label: '邮件中继 Webhook URL', type: 'password', required: true, placeholder: 'https://api.resend.com/emails or custom relay', secret: true },
   ],
 };
+
+const SECRET_KEYS = ['secret', 'token', 'access_token', 'bot_token', 'key', 'api_key', 'webhookurl', 'webhook_url'];
+
+let channels = [];
+let channelsLoading = false;
+let editingId = null;
+let testingId = null;
+let togglingId = null;
+let deletingId = null;
+let saving = false;
 
 function getTypeInfo(type) {
   return TYPE_INFO[type] || {
@@ -84,6 +94,10 @@ function getTypeInfo(type) {
   };
 }
 
+function isEnabled(ch) {
+  return ch.enabled === true || Number(ch.enabled) === 1;
+}
+
 function renderChannelIcon(type, size = 'md') {
   const info = getTypeInfo(type);
   return `
@@ -93,98 +107,191 @@ function renderChannelIcon(type, size = 'md') {
   `;
 }
 
-function renderTypeButtons() {
-  const container = document.getElementById('type-buttons');
+function renderTypeButton(type, info, { selected = false, picker = false } = {}) {
+  const selectedClass = selected ? ' type-btn--selected' : '';
+  const badge = info.badge ? `<span class="type-btn__badge">${info.badge}</span>` : '';
+  return `
+    <button type="button" data-type="${type}" class="type-btn type-btn--uptime${selectedClass}" ${picker ? 'data-picker="form"' : ''}>
+      <i class="${info.iconClass} ${info.colorClass} type-btn__icon"></i>
+      <span class="type-btn__label">${info.label}</span>
+      ${badge}
+    </button>
+  `;
+}
+
+function renderTypeButtons(containerId, { picker = false, selectedType = null } = {}) {
+  const container = document.getElementById(containerId);
   if (!container) return;
 
-  container.innerHTML = Object.entries(TYPE_INFO).map(([type, info]) => `
-    <button type="button" data-type="${type}" class="type-btn">
-      ${renderChannelIcon(type, 'sm')}
-      <span class="type-btn__label">${info.label}</span>
-      ${info.badge ? `<span class="type-btn__badge">${info.badge}</span>` : ''}
-    </button>
-  `).join('');
+  container.innerHTML = Object.entries(TYPE_INFO).map(([type, info]) =>
+    renderTypeButton(type, info, { selected: selectedType === type, picker }),
+  ).join('');
 
   container.querySelectorAll('.type-btn').forEach((btn) => {
-    btn.addEventListener('click', () => showForm(btn.getAttribute('data-type')));
+    btn.addEventListener('click', () => {
+      const type = btn.getAttribute('data-type');
+      if (btn.getAttribute('data-picker') === 'form') {
+        selectFormType(type);
+      } else {
+        startCreate(type);
+      }
+    });
   });
 }
 
-function renderConfigFields(type, values = {}) {
-  const container = document.getElementById('config-fields');
-  const fields = CONFIG_FIELDS[type] || [];
-  container.innerHTML = fields.map((f) => `
-    <div class="form-group">
-      <label class="form-label form-label--sm">${f.label}</label>
-      <input
-        name="config_${f.key}"
-        type="${f.type}"
-        ${f.required ? 'required' : ''}
-        class="glass-input glass-input--mono"
-        placeholder="${f.placeholder || ''}"
-        value="${values[f.key] || ''}"
-      />
-    </div>
-  `).join('');
+function cleanConfigForEdit(config = {}) {
+  const clean = {};
+  for (const [key, value] of Object.entries(config)) {
+    const isSecret = SECRET_KEYS.some((s) => key.toLowerCase().includes(s));
+    clean[key] = (isSecret || (typeof value === 'string' && value.includes('****'))) ? '' : (value || '');
+  }
+  return clean;
 }
 
-function showForm(type, channel = null) {
-  const section = document.getElementById('channel-form-section');
+function showPickerPanel() {
+  editingId = null;
+  document.getElementById('channels-picker-panel')?.classList.remove('hidden');
+  document.getElementById('channels-form-panel')?.classList.add('hidden');
+  renderChannelList();
+}
+
+function startCreate(type = 'wecom') {
+  editingId = 'new';
+  showFormPanel({ type, name: '', config: {}, enabled: true });
+}
+
+function selectFormType(type) {
+  const form = document.getElementById('channel-form');
+  if (!form || form.id.value) return;
+  form.type.value = type;
+  updateFormTypeIcon(type);
+  renderFormTypeState(type, false);
+  renderConfigFields(type, {});
+}
+
+function updateFormTypeIcon(type) {
+  const el = document.getElementById('form-type-icon');
+  if (!el) return;
+  const info = getTypeInfo(type);
+  el.className = `channel-icon channel-icon--md ${info.bgClass}`;
+  el.innerHTML = `<i class="${info.iconClass} ${info.colorClass}"></i>`;
+}
+
+function showFormPanel(channel) {
+  const isEdit = Boolean(channel.id);
+  editingId = isEdit ? channel.id : 'new';
+
+  document.getElementById('channels-picker-panel')?.classList.add('hidden');
+  document.getElementById('channels-form-panel')?.classList.remove('hidden');
+
   const form = document.getElementById('channel-form');
   const title = document.getElementById('form-title');
-  const panel = document.getElementById('channels-add-panel');
-  const resolvedType = channel?.type || type;
-  const info = getTypeInfo(resolvedType);
+  const subtitle = document.getElementById('form-subtitle');
+  const typePicker = document.getElementById('form-type-picker');
+  const saveLabel = document.getElementById('save-channel-label');
+  const msg = document.getElementById('form-message');
 
-  section.classList.remove('hidden');
   form.reset();
-  form.id.value = channel?.id || '';
-  form.type.value = resolvedType;
-  form.name.value = channel?.name || '';
-  form.enabled.checked = channel ? channel.enabled : true;
+  form.id.value = channel.id || '';
+  form.type.value = channel.type;
+  form.name.value = channel.name || '';
+  form.enabled.checked = channel.enabled !== false;
 
-  title.innerHTML = `
-    <span class="channel-form-title">
-      ${renderChannelIcon(resolvedType, 'sm')}
-      <span>${channel ? `编辑渠道 · ${info.label}` : `新建渠道 · ${info.label}`}</span>
-    </span>
-  `;
-  renderConfigFields(resolvedType, channel?.config || {});
+  const info = getTypeInfo(channel.type);
+  if (title) title.textContent = isEdit ? '编辑渠道' : '添加渠道';
+  if (subtitle) subtitle.textContent = `${info.label} 通知配置`;
+  updateFormTypeIcon(channel.type);
+  if (saveLabel) saveLabel.textContent = isEdit ? '保存修改' : '添加渠道';
+  if (msg) {
+    msg.textContent = '';
+    msg.className = 'form-message';
+  }
 
-  panel?.classList.add('channels-panel--highlight');
-  window.setTimeout(() => panel?.classList.remove('channels-panel--highlight'), 1200);
-  section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  typePicker?.classList.toggle('hidden', isEdit);
+  renderFormTypeState(channel.type, isEdit);
+  renderConfigFields(channel.type, channel.config || {}, isEdit);
+  renderChannelList();
+}
+
+function renderFormTypeState(type, isEdit) {
+  const container = document.getElementById('form-type-buttons');
+  if (!container || isEdit) return;
+  container.innerHTML = Object.entries(TYPE_INFO).map(([t, info]) =>
+    renderTypeButton(t, info, { selected: t === type, picker: true }),
+  ).join('');
+  container.querySelectorAll('.type-btn').forEach((btn) => {
+    btn.addEventListener('click', () => selectFormType(btn.getAttribute('data-type')));
+  });
+}
+
+function renderConfigFields(type, values = {}, isEdit = false) {
+  const container = document.getElementById('config-fields');
+  const fields = CONFIG_FIELDS[type] || [];
+  container.innerHTML = fields.map((f) => {
+    const placeholder = isEdit && f.secret
+      ? '留空则保留原密钥'
+      : (f.placeholder || '');
+    const required = isEdit && f.secret ? false : f.required;
+    return `
+      <div class="form-group">
+        <label class="form-label form-label--sm">${f.label}${!f.required && f.secret ? ' <span class="form-label__optional">可选</span>' : ''}</label>
+        <input
+          name="config_${f.key}"
+          type="${f.type}"
+          ${required ? 'required' : ''}
+          class="glass-input glass-input--mono"
+          placeholder="${placeholder}"
+          value="${values[f.key] || ''}"
+          autocomplete="off"
+        />
+      </div>
+    `;
+  }).join('');
 }
 
 function hideForm() {
-  document.getElementById('channel-form-section')?.classList.add('hidden');
+  showPickerPanel();
 }
 
-function focusAddPanel() {
-  hideForm();
-  const panel = document.getElementById('channels-add-panel');
-  panel?.classList.add('channels-panel--highlight');
-  window.setTimeout(() => panel?.classList.remove('channels-panel--highlight'), 1200);
-  panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+function editChannel(channel) {
+  showFormPanel({
+    id: channel.id,
+    type: channel.type,
+    name: channel.name,
+    enabled: channel.enabled,
+    config: cleanConfigForEdit(channel.config),
+  });
 }
 
 async function fetchChannels() {
   const resp = await fetch(`${API_BASE}/api/channels`);
+  if (!resp.ok) throw new Error('通知渠道加载失败');
   return resp.json();
 }
 
+function updateChannelCounts() {
+  const enabledEl = document.getElementById('enabled-count');
+  const totalEl = document.getElementById('total-count');
+  const enabled = channels.filter((c) => isEnabled(c)).length;
+  if (enabledEl) enabledEl.textContent = String(enabled);
+  if (totalEl) totalEl.textContent = String(channels.length);
+}
+
 function renderToggleSwitch(channel) {
-  const onClass = channel.enabled ? ' toggle-switch--on' : '';
-  const label = channel.enabled ? '禁用渠道' : '启用渠道';
+  const on = isEnabled(channel);
+  const onClass = on ? ' toggle-switch--on' : '';
+  const label = on ? '停用渠道' : '启用渠道';
+  const disabled = togglingId === channel.id ? ' disabled' : '';
   return `
     <button
       type="button"
       data-action="toggle"
       data-id="${channel.id}"
-      class="toggle-switch${onClass}"
-      aria-label="${label}"
-      aria-pressed="${channel.enabled}"
+      class="toggle-switch toggle-switch--lg${onClass}${disabled}"
+      aria-label="${label}：${channel.name}"
+      aria-pressed="${on}"
       title="${label}"
+      role="switch"
     >
       <span class="toggle-switch__track" aria-hidden="true">
         <span class="toggle-switch__thumb"></span>
@@ -195,18 +302,24 @@ function renderToggleSwitch(channel) {
 
 function renderChannelCard(channel) {
   const info = getTypeInfo(channel.type);
-  const statusClass = channel.enabled ? 'channel-card__status--enabled' : 'channel-card__status--disabled';
+  const activeClass = editingId === channel.id ? ' channel-card--active' : '';
+  const enabled = isEnabled(channel);
+  const statusClass = enabled ? 'channel-status-pill--enabled' : 'channel-status-pill--disabled';
+  const statusLabel = enabled ? '已启用' : '已停用';
+  const testing = testingId === channel.id;
+  const deleting = deletingId === channel.id;
 
   return `
-    <article class="channel-card" data-id="${channel.id}" tabindex="0" role="button" aria-label="编辑 ${channel.name}">
-      <div class="channel-card__main">
-        ${renderChannelIcon(channel.type, 'sm')}
+    <article class="channel-card channel-card--uptime${activeClass}" data-id="${channel.id}">
+      <div class="channel-card__clickable" tabindex="0" role="button" aria-label="编辑通知渠道：${channel.name}">
+        ${renderChannelIcon(channel.type, 'lg')}
         <div class="channel-card__info">
           <div class="channel-card__title-row">
             <h3 class="channel-card__title">${channel.name}</h3>
-            <span class="channel-card__status ${statusClass}">
-              <span class="channel-card__status-dot" aria-hidden="true"></span>
-              ${channel.enabled ? '已启用' : '已禁用'}
+            <span class="channel-type-badge">${info.label}</span>
+            <span class="channel-status-pill ${statusClass}">
+              <span class="channel-status-pill__dot" aria-hidden="true"></span>
+              ${statusLabel}
             </span>
           </div>
           <p class="channel-card__desc">${info.desc}</p>
@@ -214,58 +327,103 @@ function renderChannelCard(channel) {
       </div>
       <div class="channel-card__actions">
         ${renderToggleSwitch(channel)}
-        <button type="button" data-action="test" data-id="${channel.id}" class="btn btn-test-pill">测试</button>
-        <button type="button" data-action="edit" data-id="${channel.id}" class="icon-btn icon-btn--sm" aria-label="编辑 ${channel.name}" title="编辑">
+        <button type="button" data-action="test" data-id="${channel.id}" class="btn-test-outline"${testing ? ' disabled' : ''} aria-label="测试通知渠道：${channel.name}">
+          <i class="fas ${testing ? 'fa-spinner fa-spin' : 'fa-paper-plane'}" aria-hidden="true"></i>
+          测试
+        </button>
+        <button type="button" data-action="edit" data-id="${channel.id}" class="icon-btn icon-btn--sm icon-btn--edit" aria-label="编辑 ${channel.name}" title="编辑">
           <i class="fas fa-pen" aria-hidden="true"></i>
         </button>
-        <button type="button" data-action="delete" data-id="${channel.id}" class="icon-btn icon-btn--sm icon-btn--danger" aria-label="删除 ${channel.name}" title="删除">
-          <i class="fas fa-trash" aria-hidden="true"></i>
+        <button type="button" data-action="delete" data-id="${channel.id}" class="icon-btn icon-btn--sm icon-btn--danger"${deleting ? ' disabled' : ''} aria-label="删除 ${channel.name}" title="删除">
+          <i class="fas ${deleting ? 'fa-spinner fa-spin' : 'fa-trash'}" aria-hidden="true"></i>
         </button>
       </div>
     </article>
   `;
 }
 
-function updateChannelCounts(channels) {
-  const enabledEl = document.getElementById('enabled-count');
-  const totalEl = document.getElementById('total-count');
-  const enabled = channels.filter((c) => c.enabled).length;
+function renderEmptyState() {
+  return `
+    <div class="channels-empty-dashed">
+      <div class="channels-empty-dashed__icon" aria-hidden="true">
+        <i class="fas fa-bell-slash"></i>
+      </div>
+      <h3 class="channels-empty-dashed__title">还没有通知渠道</h3>
+      <p class="channels-empty-dashed__desc">添加一个渠道后，配额异常和恢复消息会推送到这里。</p>
+      <button type="button" id="empty-add-channel-btn" class="btn channels-btn-add">
+        <i class="fas fa-plus" aria-hidden="true"></i>
+        添加第一个渠道
+      </button>
+    </div>
+  `;
+}
 
-  if (enabledEl) enabledEl.textContent = String(enabled);
-  if (totalEl) totalEl.textContent = String(channels.length);
+function renderSkeleton() {
+  return `
+    <div class="channels-skeleton">
+      <div class="channels-skeleton__item"></div>
+      <div class="channels-skeleton__item"></div>
+      <div class="channels-skeleton__item"></div>
+    </div>
+  `;
+}
+
+function setChannelError(message) {
+  const banner = document.getElementById('channel-error');
+  const text = document.getElementById('channel-error-text');
+  if (!banner || !text) return;
+  if (message) {
+    text.textContent = message;
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+    text.textContent = '';
+  }
+}
+
+function renderChannelList() {
+  const list = document.getElementById('channels-list');
+  if (!list) return;
+
+  if (channelsLoading && channels.length === 0) {
+    list.innerHTML = renderSkeleton();
+    return;
+  }
+
+  if (!channels.length) {
+    list.innerHTML = renderEmptyState();
+    document.getElementById('empty-add-channel-btn')?.addEventListener('click', () => startCreate());
+    return;
+  }
+
+  list.innerHTML = channels.map(renderChannelCard).join('');
+  bindChannelCardEvents(list);
 }
 
 async function loadChannels(options = {}) {
   const { refreshBtn } = options;
-  const list = document.getElementById('channels-list');
+  channelsLoading = true;
+  setChannelError('');
 
   if (refreshBtn) {
     refreshBtn.disabled = true;
     refreshBtn.querySelector('i')?.classList.add('icon-btn--spin');
   }
 
+  if (channels.length === 0) renderChannelList();
+
   try {
-    const channels = await fetchChannels();
-    updateChannelCounts(channels);
-
-    if (!channels.length) {
-      list.innerHTML = `
-        <div class="empty-state channels-list__empty">
-          <div class="empty-state__icon"><i class="fas fa-bell-slash"></i></div>
-          <p>尚未配置通知渠道</p>
-          <p class="channels-panel__hint">从左侧选择渠道类型开始添加</p>
-        </div>`;
-      return;
-    }
-
-    list.innerHTML = channels.map(renderChannelCard).join('');
-    bindChannelCardEvents(list);
+    channels = await fetchChannels();
+    updateChannelCounts();
+    renderChannelList();
   } catch {
-    list.innerHTML = `
-      <div class="empty-state channels-list__empty">
-        <p>加载失败，请稍后重试</p>
-      </div>`;
+    setChannelError('通知渠道加载失败');
+    const list = document.getElementById('channels-list');
+    if (list && channels.length === 0) {
+      list.innerHTML = '';
+    }
   } finally {
+    channelsLoading = false;
     if (refreshBtn) {
       refreshBtn.disabled = false;
       refreshBtn.querySelector('i')?.classList.remove('icon-btn--spin');
@@ -281,20 +439,20 @@ function bindChannelCardEvents(list) {
     });
   });
 
-  list.querySelectorAll('.channel-card').forEach((card) => {
-    const openEdit = async () => {
-      const id = card.getAttribute('data-id');
-      const channels = await fetchChannels();
+  list.querySelectorAll('.channel-card__clickable').forEach((el) => {
+    const card = el.closest('.channel-card');
+    const openEdit = () => {
+      const id = card?.getAttribute('data-id');
       const channel = channels.find((c) => c.id === id);
-      if (channel) showForm(channel.type, channel);
+      if (channel) editChannel(channel);
     };
 
-    card.addEventListener('click', (e) => {
+    el.addEventListener('click', (e) => {
       if (e.target.closest('button')) return;
       openEdit();
     });
 
-    card.addEventListener('keydown', (e) => {
+    el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         openEdit();
@@ -303,16 +461,16 @@ function bindChannelCardEvents(list) {
   });
 }
 
-function renderAlertTestResults(container, channels) {
+function renderAlertTestResults(container, resultChannels) {
   if (!container) return;
-  if (!channels?.length) {
+  if (!resultChannels?.length) {
     container.classList.add('hidden');
     container.innerHTML = '';
     return;
   }
 
   container.classList.remove('hidden');
-  container.innerHTML = channels.map((ch) => {
+  container.innerHTML = resultChannels.map((ch) => {
     const info = getTypeInfo(ch.channelType);
     const statusClass = ch.ok ? 'alert-test-result--ok' : 'alert-test-result--fail';
     const statusLabel = ch.ok ? '成功' : '失败';
@@ -330,10 +488,10 @@ function renderAlertTestResults(container, channels) {
 }
 
 async function sendTestAlert(options = {}) {
-  const { accountId, messageEl, resultsEl, buttonEl } = options;
+  const { messageEl, resultsEl, buttonEl } = options;
   if (messageEl) {
     messageEl.textContent = '';
-    messageEl.className = 'form-message channels-page-header__message';
+    messageEl.className = 'form-message channels-test-message hidden';
   }
   if (resultsEl) {
     resultsEl.classList.add('hidden');
@@ -342,7 +500,6 @@ async function sendTestAlert(options = {}) {
 
   if (buttonEl) {
     buttonEl.disabled = true;
-    buttonEl.dataset.originalText = buttonEl.dataset.originalText || buttonEl.textContent.trim();
     buttonEl.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> 发送中…';
   }
 
@@ -351,7 +508,7 @@ async function sendTestAlert(options = {}) {
     const resp = await authFetch(`${API_BASE}/api/alerts/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(accountId ? { accountId } : {}),
+      body: JSON.stringify({}),
     });
     const data = await parseJsonResponse(resp);
 
@@ -369,13 +526,13 @@ async function sendTestAlert(options = {}) {
 
     if (messageEl) {
       messageEl.textContent = data.message || '测试告警已发送';
-      messageEl.className = `form-message channels-page-header__message ${data.ok ? 'form-message--success' : 'form-message--error'}`;
+      messageEl.className = `form-message channels-test-message ${data.ok ? 'form-message--success' : 'form-message--error'}`;
     }
     renderAlertTestResults(resultsEl, data.channels);
   } catch (err) {
     if (messageEl) {
       messageEl.textContent = err.message || '发送失败';
-      messageEl.className = 'form-message channels-page-header__message form-message--error';
+      messageEl.className = 'form-message channels-test-message form-message--error';
     }
   } finally {
     if (buttonEl && !rateLimited) {
@@ -388,37 +545,44 @@ async function sendTestAlert(options = {}) {
 async function handleAction(btn) {
   const action = btn.getAttribute('data-action');
   const id = btn.getAttribute('data-id');
-  const channels = await fetchChannels();
   const channel = channels.find((c) => c.id === id);
   if (!channel) return;
 
   if (action === 'edit') {
-    showForm(channel.type, channel);
+    editChannel(channel);
     return;
   }
 
   if (action === 'delete') {
-    if (!confirm(`删除渠道「${channel.name}」？`)) return;
-    await authFetch(`${API_BASE}/api/channels/${id}`, { method: 'DELETE' });
-    loadChannels();
+    if (!confirm(`确定删除通知渠道「${channel.name}」？`)) return;
+    deletingId = id;
+    renderChannelList();
+    try {
+      await authFetch(`${API_BASE}/api/channels/${id}`, { method: 'DELETE' });
+      if (editingId === id) hideForm();
+      await loadChannels();
+    } finally {
+      deletingId = null;
+      renderChannelList();
+    }
     return;
   }
 
   if (action === 'toggle') {
-    btn.disabled = true;
+    togglingId = id;
+    renderChannelList();
     try {
       await authFetch(`${API_BASE}/api/channels/${id}/toggle`, { method: 'PATCH' });
       await loadChannels();
     } finally {
-      btn.disabled = false;
+      togglingId = null;
     }
     return;
   }
 
   if (action === 'test') {
-    btn.disabled = true;
-    btn.dataset.originalText = btn.dataset.originalText || btn.textContent;
-    btn.textContent = '发送中…';
+    testingId = id;
+    renderChannelList();
     let rateLimited = false;
     try {
       const resp = await authFetch(`${API_BASE}/api/channels/${id}/test`, { method: 'POST' });
@@ -437,10 +601,8 @@ async function handleAction(btn) {
     } catch (err) {
       alert(`测试失败: ${err.message}`);
     } finally {
-      if (!rateLimited) {
-        btn.disabled = false;
-        btn.textContent = btn.dataset.originalText || '测试';
-      }
+      testingId = null;
+      if (!rateLimited) renderChannelList();
     }
   }
 }
@@ -456,10 +618,15 @@ function collectConfig(type, form) {
 
 async function submitChannelForm(e) {
   e.preventDefault();
+  if (saving) return;
+
   const form = e.target;
   const msg = document.getElementById('form-message');
+  const saveBtn = document.getElementById('save-channel-btn');
   const id = form.id.value;
   const type = form.type.value;
+  const isEdit = Boolean(id);
+
   const payload = {
     type,
     name: form.name.value.trim(),
@@ -467,27 +634,48 @@ async function submitChannelForm(e) {
     config: collectConfig(type, form),
   };
 
+  if (!payload.name) {
+    if (msg) {
+      msg.textContent = '请填写渠道名称';
+      msg.className = 'form-message form-message--error';
+    }
+    return;
+  }
+
+  saving = true;
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span>保存中…</span>';
+  }
+
   try {
-    const url = id ? `${API_BASE}/api/channels/${id}` : `${API_BASE}/api/channels`;
-    const method = id ? 'PUT' : 'POST';
+    const url = isEdit ? `${API_BASE}/api/channels/${id}` : `${API_BASE}/api/channels`;
+    const method = isEdit ? 'PUT' : 'POST';
     const resp = await authFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Save failed');
+    if (!resp.ok) throw new Error(data.error || '保存失败');
 
     if (msg) {
-      msg.textContent = '保存成功';
+      msg.textContent = isEdit ? '渠道已更新' : '渠道已添加';
       msg.className = 'form-message form-message--success';
     }
     hideForm();
-    loadChannels();
+    await loadChannels();
   } catch (err) {
     if (msg) {
       msg.textContent = err.message;
       msg.className = 'form-message form-message--error';
+    }
+  } finally {
+    saving = false;
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      const label = isEdit ? '保存修改' : '添加渠道';
+      saveBtn.innerHTML = `<i class="fas fa-save" aria-hidden="true"></i><span id="save-channel-label">${label}</span>`;
     }
   }
 }
@@ -497,14 +685,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (nav) setupNavAuth(nav);
   await requirePageAuth();
 
-  renderTypeButtons();
+  renderTypeButtons('type-buttons');
 
   document.getElementById('cancel-form')?.addEventListener('click', hideForm);
+  document.getElementById('close-form-btn')?.addEventListener('click', hideForm);
   document.getElementById('channel-form')?.addEventListener('submit', submitChannelForm);
-
-  document.getElementById('add-channel-btn')?.addEventListener('click', focusAddPanel);
+  document.getElementById('add-channel-btn')?.addEventListener('click', () => startCreate());
 
   document.getElementById('refresh-channels-btn')?.addEventListener('click', () => {
+    loadChannels({ refreshBtn: document.getElementById('refresh-channels-btn') });
+  });
+
+  document.getElementById('retry-channels-btn')?.addEventListener('click', () => {
     loadChannels({ refreshBtn: document.getElementById('refresh-channels-btn') });
   });
 
@@ -516,5 +708,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  loadChannels();
+  await loadChannels();
 });

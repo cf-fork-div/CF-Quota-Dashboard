@@ -28,71 +28,125 @@
   </header>
 
   <main class="page-main page-main--wide">
-    <header class="channels-page-header">
-      <div class="channels-page-header__main">
-        <h1 class="channels-page-header__title">
-          <span class="channels-page-header__icon" aria-hidden="true"><i class="fas fa-bell"></i></span>
-          通知渠道管理
-        </h1>
-        <p class="channels-page-header__subtitle">配置配额告警推送目标</p>
-        <span class="channels-page-header__badge">
-          启用 <span id="enabled-count">0</span> / <span id="total-count">0</span>
-        </span>
-      </div>
-      <div class="channels-page-header__actions">
-        <button type="button" id="test-all-alerts-btn" class="btn btn-secondary btn-sm channels-page-header__test-all">
-          <i class="fas fa-paper-plane" aria-hidden="true"></i>
-          发送测试告警
-        </button>
-        <button type="button" id="add-channel-btn" class="btn-add-account">
-          <span class="btn-add-account__icon" aria-hidden="true">+</span>
-          添加渠道
-        </button>
-      </div>
-    </header>
-
-    <p id="test-all-message" class="form-message channels-page-header__message"></p>
-    <div id="test-all-results" class="alert-test-results hidden"></div>
-
-    <div class="channels-layout">
-      <section id="channels-add-panel" class="channels-panel glass-card">
-        <h2 class="channels-panel__title">选择或添加渠道</h2>
-        <p class="channels-panel__hint">从右侧选择已有渠道，或直接选择一种类型开始添加</p>
-        <div class="type-grid" id="type-buttons"></div>
-
-        <section id="channel-form-section" class="channels-form hidden">
-          <h3 id="form-title" class="channels-form__title">新建渠道</h3>
-          <form id="channel-form" class="space-y-3">
-            <input type="hidden" name="id" />
-            <input type="hidden" name="type" />
-            <div class="form-group">
-              <label class="form-label form-label--sm">名称</label>
-              <input name="name" required class="glass-input" placeholder="主告警群" />
-            </div>
-            <div id="config-fields" class="space-y-3"></div>
-            <label class="form-checkbox">
-              <input type="checkbox" name="enabled" id="enabled-check" checked />
-              <span>启用</span>
-            </label>
-            <div class="form-actions">
-              <button type="submit" class="btn btn-primary">保存</button>
-              <button type="button" id="cancel-form" class="btn btn-ghost">取消</button>
-            </div>
-            <p id="form-message" class="form-message"></p>
-          </form>
-        </section>
-      </section>
-
-      <section class="channels-panel glass-card channels-main">
-        <div class="channels-panel__head">
-          <h2 class="channels-panel__title">渠道列表</h2>
-          <button type="button" id="refresh-channels-btn" class="icon-btn icon-btn--sm" aria-label="刷新渠道列表" title="刷新">
-            <i class="fas fa-arrows-rotate" aria-hidden="true"></i>
+    <div class="channels-shell glass-card">
+      <header class="channels-modal-header">
+        <div class="channels-modal-header__main">
+          <div class="channels-modal-header__icon" aria-hidden="true">
+            <i class="fas fa-bell"></i>
+          </div>
+          <div class="channels-modal-header__text">
+            <h1 class="channels-modal-header__title">通知渠道管理</h1>
+            <p class="channels-modal-header__subtitle">配置配额告警、恢复与检测失败的推送目标</p>
+          </div>
+        </div>
+        <div class="channels-modal-header__actions">
+          <div class="channels-modal-header__badge">
+            <span class="channels-modal-header__badge-label">启用</span>
+            <span id="enabled-count" class="channels-modal-header__badge-count">0</span>
+            <span class="channels-modal-header__badge-sep">/</span>
+            <span id="total-count" class="channels-modal-header__badge-total">0</span>
+          </div>
+          <button type="button" id="test-all-alerts-btn" class="btn btn-secondary btn-sm channels-modal-header__test-all">
+            <i class="fas fa-paper-plane" aria-hidden="true"></i>
+            发送测试告警
+          </button>
+          <button type="button" id="add-channel-btn" class="btn channels-btn-add">
+            <i class="fas fa-plus" aria-hidden="true"></i>
+            添加渠道
           </button>
         </div>
-        <p class="channels-panel__hint">点击渠道卡片可编辑配置</p>
-        <div id="channels-list" class="channels-list loading-state">加载中…</div>
-      </section>
+      </header>
+
+      <p id="test-all-message" class="form-message channels-test-message hidden"></p>
+      <div id="test-all-results" class="alert-test-results hidden"></div>
+
+      <div class="channels-modal-body">
+        <div class="channels-layout-uptime">
+          <aside class="channels-editor" id="channels-editor">
+            <div id="channels-picker-panel" class="channels-picker-panel">
+              <div class="channels-picker-panel__icon" aria-hidden="true">
+                <i class="fas fa-route"></i>
+              </div>
+              <h2 class="channels-picker-panel__title">选择或添加渠道</h2>
+              <p class="channels-picker-panel__hint">从右侧选择已有渠道，或直接选择一种类型开始添加。</p>
+              <div class="type-grid type-grid--uptime" id="type-buttons"></div>
+            </div>
+
+            <div id="channels-form-panel" class="channels-form-panel hidden">
+              <div class="channels-form-panel__header">
+                <div class="channels-form-panel__header-main">
+                  <span id="form-type-icon" class="channel-icon channel-icon--md" aria-hidden="true"></span>
+                  <div>
+                    <h2 id="form-title" class="channels-form-panel__title">添加渠道</h2>
+                    <p id="form-subtitle" class="channels-form-panel__subtitle"></p>
+                  </div>
+                </div>
+                <button type="button" id="close-form-btn" class="channels-form-panel__close" aria-label="收起表单" title="收起表单">
+                  <i class="fas fa-times" aria-hidden="true"></i>
+                </button>
+              </div>
+
+              <form id="channel-form" class="channels-form-panel__body">
+                <input type="hidden" name="id" />
+                <input type="hidden" name="type" />
+
+                <div id="form-type-picker" class="channels-form-type-picker hidden">
+                  <label class="form-label form-label--sm">渠道类型</label>
+                  <div class="type-grid type-grid--uptime" id="form-type-buttons"></div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label form-label--sm">渠道名称 <span class="form-label__required">*</span></label>
+                  <input name="name" required class="glass-input" placeholder="例如：研发群机器人" />
+                </div>
+
+                <div id="config-fields" class="space-y-3"></div>
+
+                <label class="form-checkbox">
+                  <input type="checkbox" name="enabled" id="enabled-check" checked />
+                  <span>启用</span>
+                </label>
+                <p id="form-message" class="form-message"></p>
+              </form>
+
+              <div class="channels-form-panel__footer">
+                <button type="button" id="cancel-form" class="btn btn-ghost">取消</button>
+                <button type="submit" form="channel-form" id="save-channel-btn" class="btn channels-btn-save">
+                  <i class="fas fa-save" aria-hidden="true"></i>
+                  <span id="save-channel-label">添加渠道</span>
+                </button>
+              </div>
+            </div>
+          </aside>
+
+          <section class="channels-list-panel">
+            <div class="channels-list-panel__head">
+              <div>
+                <h2 class="channels-list-panel__title">渠道列表</h2>
+                <p class="channels-list-panel__hint">点击渠道卡片可编辑配置。</p>
+              </div>
+              <button type="button" id="refresh-channels-btn" class="channels-btn-refresh" aria-label="刷新渠道列表">
+                <i class="fas fa-sync-alt" aria-hidden="true"></i>
+                刷新
+              </button>
+            </div>
+
+            <div id="channel-error" class="channels-error-banner hidden">
+              <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+              <p id="channel-error-text" class="channels-error-banner__text"></p>
+              <button type="button" id="retry-channels-btn" class="channels-error-banner__retry">重试</button>
+            </div>
+
+            <div id="channels-list" class="channels-list loading-state">
+              <div class="channels-skeleton">
+                <div class="channels-skeleton__item"></div>
+                <div class="channels-skeleton__item"></div>
+                <div class="channels-skeleton__item"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   </main>
 
