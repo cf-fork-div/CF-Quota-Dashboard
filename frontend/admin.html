@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="page-shell">
@@ -31,7 +32,7 @@
     <section>
       <div class="admin-section-header">
         <h2 class="section-title admin-section-header__title">已配置账号</h2>
-        <button type="button" id="show-add-form-btn" class="btn-add-account" aria-expanded="false" aria-controls="account-form-panel">
+        <button type="button" id="show-add-form-btn" class="btn-add-account" aria-haspopup="dialog" aria-controls="account-modal-overlay">
           <span class="btn-add-account__icon" aria-hidden="true">+</span>
           添加账号
         </button>
@@ -39,49 +40,82 @@
       <p class="form-hint mb-3">拖动左侧手柄可调整在仪表盘中的显示顺序。</p>
       <div id="accounts-list" class="loading-state">加载中…</div>
     </section>
-
-    <section id="account-form-panel" class="glass-card account-form-panel hidden" aria-hidden="true">
-      <h2 id="form-title" class="glass-card__title">添加账号</h2>
-      <form id="account-form">
-        <div class="form-group">
-          <label class="form-label">Account Name</label>
-          <input name="name" required class="glass-input" placeholder="主账号" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Account ID</label>
-          <input name="accountId" required class="glass-input glass-input--mono" placeholder="32 位 Cloudflare Account ID" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">API Token (read-only)</label>
-          <input name="apiToken" type="password" required class="glass-input glass-input--mono" placeholder="Cloudflare API Token" />
-          <p class="form-hint">保存前建议先点击「验证凭据」，确认 Token 有效且权限足够。</p>
-        </div>
-
-        <fieldset class="alert-settings">
-          <legend class="form-label">告警设置</legend>
-          <div class="alert-rules-header">
-            <p class="form-hint alert-rules-hint">
-              按服务启用用量百分比告警；达到阈值后通过已启用的通知渠道推送。默认不启用，需手动勾选。
-            </p>
-            <div class="alert-rules-toolbar">
-              <button type="button" id="alert-select-all" class="btn btn-ghost btn-sm">全选</button>
-              <button type="button" id="alert-select-none" class="btn btn-ghost btn-sm">全不选</button>
-            </div>
-          </div>
-          <div id="alert-rules-grid" class="alert-rules-grid">
-            <p class="form-hint">加载服务列表…</p>
-          </div>
-        </fieldset>
-
-        <div class="form-actions">
-          <button type="button" id="verify-btn" class="btn btn-secondary">验证凭据</button>
-          <button type="submit" id="submit-btn" class="btn btn-primary">保存账号</button>
-          <button type="button" id="cancel-form-btn" class="btn btn-ghost">取消</button>
-        </div>
-        <p id="form-message" class="form-message"></p>
-      </form>
-    </section>
   </main>
+
+  <div id="account-modal-overlay" class="account-modal-overlay hidden" aria-hidden="true">
+    <div class="account-modal" role="dialog" aria-modal="true" aria-labelledby="modal-form-title">
+      <header class="account-modal__header">
+        <div class="account-modal__header-main">
+          <span class="account-modal__header-icon" aria-hidden="true">
+            <i class="fas fa-user-circle"></i>
+          </span>
+          <div class="account-modal__header-text">
+            <h2 id="modal-form-title" class="account-modal__title">添加账号</h2>
+            <p class="account-modal__subtitle">凭据与告警配置</p>
+          </div>
+        </div>
+        <button type="button" id="modal-close-btn" class="account-modal__close" aria-label="关闭">
+          <i class="fas fa-xmark" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <form id="account-form" class="account-modal__form">
+        <div class="account-modal__body">
+          <section class="account-modal__section">
+            <h3 class="account-modal__section-title account-modal__section-title--basic">
+              <span class="account-modal__section-icon" aria-hidden="true"><i class="fas fa-pen-to-square"></i></span>
+              基础信息
+            </h3>
+            <div class="account-modal__fields">
+              <div class="form-group">
+                <label class="form-label">Account Name</label>
+                <input name="name" required class="glass-input" placeholder="主账号" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Account ID</label>
+                <input name="accountId" required class="glass-input glass-input--mono" placeholder="32 位 Cloudflare Account ID" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">API Token (read-only)</label>
+                <div class="account-modal__token-row">
+                  <input name="apiToken" type="password" required class="glass-input glass-input--mono" placeholder="Cloudflare API Token" />
+                  <button type="button" id="verify-btn" class="btn btn-secondary btn-sm account-modal__verify-btn">验证凭据</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="account-modal__section">
+            <div class="account-modal__section-head">
+              <h3 class="account-modal__section-title account-modal__section-title--alert">
+                <span class="account-modal__section-icon" aria-hidden="true"><i class="fas fa-gear"></i></span>
+                告警设置
+              </h3>
+              <div class="alert-rules-toolbar">
+                <button type="button" id="alert-select-all" class="btn btn-ghost btn-sm">全选</button>
+                <button type="button" id="alert-select-none" class="btn btn-ghost btn-sm">全不选</button>
+              </div>
+            </div>
+            <p class="form-hint account-modal__alert-hint">
+              按服务启用用量百分比告警；达到阈值后通过已启用的通知渠道推送。
+            </p>
+            <div id="alert-rules-grid" class="alert-rules-grid alert-rules-grid--modal">
+              <p class="form-hint">加载服务列表…</p>
+            </div>
+          </section>
+
+          <p id="form-message" class="form-message account-modal__message"></p>
+        </div>
+
+        <footer class="account-modal__footer">
+          <button type="submit" id="submit-btn" class="btn-save-config">
+            <i class="fas fa-floppy-disk" aria-hidden="true"></i>
+            保存配置
+          </button>
+        </footer>
+      </form>
+    </div>
+  </div>
 
   <script type="module" src="/app.js"></script>
 </body>

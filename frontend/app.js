@@ -194,26 +194,41 @@ function renderAlertRulesGrid(alertRules = []) {
 
   grid.innerHTML = alertServiceGroups.map((group) => {
     const state = getGroupStateFromRules(group, alertRules);
+    const checkedClass = state.enabled ? ' alert-toggle-row--checked' : '';
     return `
-      <div class="alert-service-row" data-group-id="${group.id}">
-        <label class="alert-service-row__enable">
-          <input type="checkbox" name="alertService" value="${group.id}" ${state.enabled ? 'checked' : ''} />
-          <span class="alert-service-row__title">${group.title}</span>
-        </label>
-        <input
-          type="number"
-          name="alertThreshold_${group.id}"
-          class="glass-input glass-input--sm alert-threshold-input"
-          min="1"
-          max="100"
-          step="1"
-          value="${state.thresholdPercent}"
-          aria-label="${group.title} 告警阈值"
-        />
-        <span class="alert-service-row__unit">%</span>
+      <div class="alert-toggle-row${checkedClass}" data-group-id="${group.id}">
+        <span class="alert-toggle-row__name">${group.title}</span>
+        <div class="alert-toggle-row__controls">
+          <input
+            type="number"
+            name="alertThreshold_${group.id}"
+            class="glass-input glass-input--sm alert-threshold-input"
+            min="1"
+            max="100"
+            step="1"
+            value="${state.thresholdPercent}"
+            aria-label="${group.title} 告警阈值"
+            ${state.enabled ? '' : 'disabled'}
+          />
+          <span class="alert-toggle-row__unit">%</span>
+          <label class="alert-toggle-row__check">
+            <input type="checkbox" name="alertService" value="${group.id}" ${state.enabled ? 'checked' : ''} />
+            <span class="alert-toggle-row__check-ui" aria-hidden="true"></span>
+          </label>
+        </div>
       </div>
     `;
   }).join('');
+
+  grid.querySelectorAll('input[name="alertService"]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const row = cb.closest('.alert-toggle-row');
+      const threshold = row?.querySelector('.alert-threshold-input');
+      if (!row || !threshold) return;
+      row.classList.toggle('alert-toggle-row--checked', cb.checked);
+      threshold.disabled = !cb.checked;
+    });
+  });
 }
 
 function bindAlertRulesToolbar() {
@@ -225,12 +240,20 @@ function bindAlertRulesToolbar() {
   selectAll?.addEventListener('click', () => {
     grid.querySelectorAll('input[name="alertService"]').forEach((cb) => {
       cb.checked = true;
+      const row = cb.closest('.alert-toggle-row');
+      const threshold = row?.querySelector('.alert-threshold-input');
+      row?.classList.add('alert-toggle-row--checked');
+      if (threshold) threshold.disabled = false;
     });
   });
 
   selectNone?.addEventListener('click', () => {
     grid.querySelectorAll('input[name="alertService"]').forEach((cb) => {
       cb.checked = false;
+      const row = cb.closest('.alert-toggle-row');
+      const threshold = row?.querySelector('.alert-threshold-input');
+      row?.classList.remove('alert-toggle-row--checked');
+      if (threshold) threshold.disabled = true;
     });
   });
 }
@@ -917,42 +940,31 @@ async function loadDashboard() {
 
 let editingAccountId = null;
 
-function getAccountFormPanel() {
-  return document.getElementById('account-form-panel');
+function getAccountModalOverlay() {
+  return document.getElementById('account-modal-overlay');
 }
 
-function getShowAddFormBtn() {
-  return document.getElementById('show-add-form-btn');
+function openModal() {
+  const overlay = getAccountModalOverlay();
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('account-modal-open');
+  const firstInput = overlay.querySelector('input[name="name"]');
+  firstInput?.focus();
 }
 
-function openAccountFormPanel() {
-  const panel = getAccountFormPanel();
-  const addBtn = getShowAddFormBtn();
-  if (panel) {
-    panel.classList.remove('hidden');
-    panel.setAttribute('aria-hidden', 'false');
-  }
-  if (addBtn) {
-    addBtn.classList.add('hidden');
-    addBtn.setAttribute('aria-expanded', 'true');
-  }
-}
-
-function closeAccountFormPanel() {
-  const panel = getAccountFormPanel();
-  const addBtn = getShowAddFormBtn();
+function closeModal() {
+  const overlay = getAccountModalOverlay();
   const msg = document.getElementById('form-message');
-  if (panel) {
-    panel.classList.add('hidden');
-    panel.setAttribute('aria-hidden', 'true');
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.setAttribute('aria-hidden', 'true');
   }
-  if (addBtn) {
-    addBtn.classList.remove('hidden');
-    addBtn.setAttribute('aria-expanded', 'false');
-  }
+  document.body.classList.remove('account-modal-open');
   if (msg) {
     msg.textContent = '';
-    msg.className = 'form-message';
+    msg.className = 'form-message account-modal__message';
   }
 }
 
@@ -961,11 +973,9 @@ function clearAccountFormFields() {
   if (!form) return;
   form.reset();
   editingAccountId = null;
-  const title = document.getElementById('form-title');
-  const submitBtn = document.getElementById('submit-btn');
+  const title = document.getElementById('modal-form-title');
   const tokenInput = form.apiToken;
   if (title) title.textContent = '添加账号';
-  if (submitBtn) submitBtn.textContent = '保存账号';
   if (tokenInput) {
     tokenInput.required = true;
     tokenInput.placeholder = 'Cloudflare API Token';
@@ -975,21 +985,19 @@ function clearAccountFormFields() {
 
 function resetAccountForm() {
   clearAccountFormFields();
-  closeAccountFormPanel();
+  closeModal();
 }
 
-function openAddAccountForm() {
+function openModalAdd() {
   clearAccountFormFields();
-  openAccountFormPanel();
-  getAccountFormPanel()?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  openModal();
 }
 
-function startEditAccount(account) {
+function openModalEdit(account) {
   const form = document.getElementById('account-form');
   if (!form) return;
 
   clearAccountFormFields();
-  openAccountFormPanel();
 
   editingAccountId = account.id;
   form.name.value = account.name;
@@ -999,12 +1007,10 @@ function startEditAccount(account) {
   form.apiToken.placeholder = `留空则保留 ${account.apiToken}`;
   setAlertFormValues(account.alertRules);
 
-  const title = document.getElementById('form-title');
-  const submitBtn = document.getElementById('submit-btn');
+  const title = document.getElementById('modal-form-title');
   if (title) title.textContent = `编辑账号 · ${account.name}`;
-  if (submitBtn) submitBtn.textContent = '更新账号';
 
-  getAccountFormPanel()?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  openModal();
 }
 
 async function verifyAccountForm() {
@@ -1291,7 +1297,7 @@ async function loadAdmin() {
       const account = accounts.find((a) => a.id === id);
 
       if (action === 'edit' && account) {
-        startEditAccount(account);
+        openModalEdit(account);
         return;
       }
 
@@ -1397,10 +1403,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (verifyBtn) verifyBtn.addEventListener('click', verifyAccountForm);
 
     const showAddBtn = document.getElementById('show-add-form-btn');
-    if (showAddBtn) showAddBtn.addEventListener('click', openAddAccountForm);
+    if (showAddBtn) showAddBtn.addEventListener('click', openModalAdd);
 
-    const cancelBtn = document.getElementById('cancel-form-btn');
-    if (cancelBtn) cancelBtn.addEventListener('click', resetAccountForm);
+    const modalOverlay = getAccountModalOverlay();
+    const modalCloseBtn = document.getElementById('modal-close-btn');
+    if (modalCloseBtn) modalCloseBtn.addEventListener('click', resetAccountForm);
+    if (modalOverlay) {
+      modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) resetAccountForm();
+      });
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const overlay = getAccountModalOverlay();
+      if (overlay && !overlay.classList.contains('hidden')) resetAccountForm();
+    });
   }
 
   const settingsForm = document.getElementById('settings-form');
