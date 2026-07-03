@@ -113,7 +113,13 @@
 
 ## 🛠️ 部署指南
 
-需 [Node.js 18+](https://nodejs.org/)。整段复制粘贴对应代码块即可（Mac / Linux / Git Bash → Bash，Windows → PowerShell）。
+支持 **[一键部署](docs/DEPLOY.md#1-一键部署)** 与 **[GitHub Actions](docs/DEPLOY.md#2-github-actions-部署)**，流程与效果相同。部署前请先完成 [docs/DEPLOY.md 前置条件](docs/DEPLOY.md#前置条件)（创建 API Token）。
+
+> GitHub Actions 的 `CLOUDFLARE_API_TOKEN` 须含 **Workers Scripts → Edit** 与 **Workers KV Storage → Edit**，否则上传静态资源会报 `Authentication error [code: 10000]`。
+
+### 一键部署
+
+需 [Node.js 18+](https://nodejs.org/)。整段复制粘贴对应代码块（Mac / Linux / Git Bash → Bash，Windows → PowerShell）。
 
 ### Bash / Git Bash
 
@@ -147,11 +153,19 @@ $env:QUICK_DEPLOY_LANG='zh'                       # ← 修改语言（zh 或 en
 npm run quick-deploy
 ```
 
-**前置条件：** 浏览器已登录 [Cloudflare](https://dash.cloudflare.com/)；[API Token 已获取](docs/DEPLOY.md#前置条件)。完整步骤见 [docs/DEPLOY.md](docs/DEPLOY.md)。
+**前置条件：** 浏览器已登录 [Cloudflare](https://dash.cloudflare.com/)；[API Token 已创建](docs/DEPLOY.md#前置条件)（一键部署 → `QUICK_DEPLOY_API_TOKEN`，GitHub → `CLOUDFLARE_API_TOKEN`）。完整说明见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 
 ### GitHub Actions
 
-Fork 仓库后，配置 3 个 Secret（`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`PASSWORD`），推送 `master` 即自动部署，效果与一键部署相同。详见 [docs/DEPLOY.md §2](docs/DEPLOY.md#2-github-actions-部署)。
+Fork 仓库后，在 **Settings → Secrets and variables → Actions** 配置 3 个 Secret：
+
+| Secret | 说明 |
+|--------|------|
+| `CLOUDFLARE_API_TOKEN` | 前置条件创建的 API Token（须含 Workers Scripts / KV **Edit**） |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账号 ID |
+| `PASSWORD` | `/admin` 登录码 |
+
+推送 `master` 或 Actions 页 **Run workflow** 即自动部署。详见 [docs/DEPLOY.md §2](docs/DEPLOY.md#2-github-actions-部署)。
 
 ---
 

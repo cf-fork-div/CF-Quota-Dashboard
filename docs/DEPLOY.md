@@ -25,8 +25,10 @@
 1. 打开 [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
 2. **使用模板** → **Edit Cloudflare Workers**
 3. 令牌名称建议改为 `cf-quota-dashboard`
-4. **增加权限**：Account → **D1 → Read**
-5. **Workers Scripts**、**Workers KV Storage** 保持 **Edit**（GitHub 部署需要）；其余权限改为 **Read**
+4. **必须保持 Edit**（GitHub 部署上传 Worker 与静态资源需要）：
+   - Account → **Workers Scripts → Edit**
+   - Account → **Workers KV Storage → Edit**
+5. 其余权限改为 **Read**；**增加** Account → **D1 → Read**
 6. 创建令牌并复制 Token 值
 
 - 一键部署：设为 `QUICK_DEPLOY_API_TOKEN`
@@ -88,6 +90,8 @@ npm run quick-deploy
 | `PASSWORD` | ✅ | `/admin` 登录码 |
 
 KV 命名空间会自动查找或创建，无需额外配置。
+
+> 若 Actions 日志出现 `assets-upload-session` + `Authentication error [code: 10000]`，说明 `CLOUDFLARE_API_TOKEN` 缺少 **Workers Scripts → Edit** 权限（常见原因：把 Scripts 改成了 Read）。
 
 ### 2.2 触发部署
 
