@@ -327,7 +327,7 @@ curl.exe -X POST "https://your-worker.workers.dev/cron/fetch" -H "Cookie: cfqd_s
 | Hyperdrive 查询 | 100,000 | 日 |
 | Workflows 调用 | 100,000 | 日 |
 | Durable Objects 请求/时长/读写/SQL | 100k / 13k GB-s / 5M·100k / 5 GB | 见代码 |
-| Browser Rendering | 10 分钟 | 日 |
+| Browser Run | 10 分钟 | 日 |
 | Analytics Engine 写入 | 100,000 points | 日 |
 
 参考：[Workers 定价](https://developers.cloudflare.com/workers/platform/pricing/)、[D1](https://developers.cloudflare.com/d1/platform/pricing/)、[R2](https://developers.cloudflare.com/r2/pricing/)、[Pages 限制](https://developers.cloudflare.com/pages/platform/limits/)。
@@ -340,6 +340,7 @@ curl.exe -X POST "https://your-worker.workers.dev/cron/fetch" -H "Cookie: cfqd_s
 |------|------|-----|
 | Workers | 请求数 | `workersInvocationsAdaptive` |
 | D1 | 读/写行、存储 | `d1AnalyticsAdaptiveGroups`、`d1StorageAdaptiveGroups` |
+| D1 | 数据库个数 | REST `/accounts/{id}/d1/database`（需 **Account → D1 → Read**；读/写/存储 GraphQL 仅需 Account Analytics: Read） |
 | KV | 读/写/删/列、存储 | `kvOperationsAdaptiveGroups`、`kvStorageAdaptiveGroups` |
 | R2 | 存储、Class A/B | `r2StorageAdaptiveGroups`、`r2OperationsAdaptiveGroups` |
 | Pages | 月构建、Functions 日请求 | REST `/pages/projects` + `/deployments`；GraphQL `pagesFunctionsInvocationsAdaptiveGroups` |
@@ -349,7 +350,7 @@ curl.exe -X POST "https://your-worker.workers.dev/cron/fetch" -H "Cookie: cfqd_s
 | Hyperdrive | 查询 | `hyperdriveQueriesAdaptiveGroups` |
 | Workflows | 调用 | `workflowsAdaptiveGroups` |
 | Durable Objects | 请求、时长、读写、SQL 存储 | `durableObjects*Groups` |
-| Browser Rendering | 会话分钟 | `browserRenderingBrowserTimeUsageAdaptiveGroups` |
+| Browser Run | 会话分钟 | `browserRenderingBrowserTimeUsageAdaptiveGroups` |
 | Analytics Engine | 写入点数 | `workersAnalyticsEngineAdaptiveGroups` |
 
 ### 部分可用 / 不可用
@@ -364,14 +365,19 @@ curl.exe -X POST "https://your-worker.workers.dev/cron/fetch" -H "Cookie: cfqd_s
 
 ## API Token 权限
 
-为**被监控账号**创建 **只读** Token，建议权限：
+在 Cloudflare Dashboard → **My Profile** → **API Tokens** → **Create Token** → **Create Custom Token** 中，为**被监控账号**创建 **只读** Token。
 
-- Account Analytics: Read（含 Vectorize GraphQL 用量；**必需**）
+**最低必需权限**（缺一不可）：
+
+- **Account → Account Analytics → Read** — 大部分 GraphQL 用量（Workers、D1 读/写/存储、KV、R2、Workflows、Browser Run 等）
+- **Account → D1 → Read** — REST `GET /accounts/{id}/d1/database` 查询 D1 **数据库个数**（GraphQL 无法获取此项；缺此权限时 D1 卡片会显示权限提示，不影响 D1 读/写/存储用量）
+
+**建议一并勾选**（按需）：
+
 - Cloudflare Pages: Read
 - Workers Scripts: Read
 - Workers KV Storage: Read
 - Workers R2 Storage: Read
-- D1: Read
 - Queues: Read
 - Hyperdrive: Read（若使用）
 - Vectorize: Read（可选；仅在使用 REST 列举索引时，GraphQL 方式不需要）

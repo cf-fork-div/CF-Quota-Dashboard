@@ -8,8 +8,8 @@ const LABEL_ZH = {
   workers_build_minutes: 'Workers Builds（构建分钟）',
   workers_build_concurrent: 'Workers Builds（并发槽位）',
   pages_builds: 'Pages Builds（构建次数）',
-  workflows_invocations: 'Workflows 调用',
-  browser_minutes: 'Browser Rendering（分钟）',
+  workflows_invocations: 'Workflows 调用（工作流）',
+  browser_minutes: 'Browser Run（分钟）',
   ai_neurons: 'Workers AI（Neurons）',
   workers_cpu_ms: 'Workers CPU（单次请求）',
   d1_databases: 'D1 数据库',
@@ -54,6 +54,7 @@ const SERVICE_GROUPS = [
     metaFn: (quotas) => {
       const db = quotas?.d1_databases;
       if (db?.available) return `${db.used.toLocaleString()} 个数据库`;
+      if (db?.note) return db.note;
       return '';
     },
   },

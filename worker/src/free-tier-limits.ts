@@ -174,7 +174,7 @@ export const DEFAULT_FREE_TIER_LIMITS: FreeTierLimitsConfig = {
     limit: 10,
     period: 'daily',
     unit: 'minutes',
-    label: 'Browser Rendering',
+    label: 'Browser Run',
   },
   workers_cpu_ms: {
     limit: 10,

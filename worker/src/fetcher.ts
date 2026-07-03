@@ -178,11 +178,24 @@ function metricNote(prefix: string, partialErrors: string[]): string | undefined
   return match ? parseApiErrorMessage(match) : undefined;
 }
 
+function isAuthErrorMessage(message: string): boolean {
+  return /authentication error|authenticate|authorization|10000/i.test(message);
+}
+
 function vectorizeMetricNote(error: string | undefined): string | undefined {
   if (!error) return undefined;
   const message = parseApiErrorMessage(error);
-  if (/authentication error|authenticate|authorization|10000/i.test(message)) {
+  if (isAuthErrorMessage(message)) {
     return '需要 Account Analytics: Read 权限（GraphQL）；REST 索引查询另需 Account → Vectorize → Read';
+  }
+  return message;
+}
+
+function d1DatabaseMetricNote(error: string | undefined): string | undefined {
+  if (!error) return undefined;
+  const message = parseApiErrorMessage(error);
+  if (isAuthErrorMessage(message)) {
+    return '需要 API Token 权限：Account → D1 → Read';
   }
   return message;
 }
@@ -831,7 +844,6 @@ async function fetchAllMetrics(
   );
 
   if (!d1Result.ok) partialErrors.push(d1Result.error);
-  if (!d1DatabasesResult.ok) partialErrors.push(d1DatabasesResult.error);
   if (!kvResult.ok) partialErrors.push(kvResult.error);
   else if (kvResult.errors.length) partialErrors.push(...kvResult.errors);
   if (!r2Result.ok) partialErrors.push(r2Result.error);
@@ -901,7 +913,9 @@ async function fetchAllMetrics(
       d1DatabasesResult.ok ? d1DatabasesResult.count : 0,
       limits.d1_databases,
       d1DatabasesResult.ok,
-      d1DatabasesResult.ok ? undefined : metricNote('d1-databases', partialErrors),
+      d1DatabasesResult.ok
+        ? undefined
+        : d1DatabaseMetricNote(d1DatabasesResult.error),
     ),
     kv_reads: buildMetric(
       'kv_reads',
