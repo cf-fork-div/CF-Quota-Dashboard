@@ -1,0 +1,212 @@
+# Role: Cloudflare 多账号免费额度监控系统 (CF-Quota-Dashboard)
+
+你是一位 Cloudflare Workers、Hono、KV、GraphQL Analytics 和 TailwindCSS 专家。请帮我实现一个 **支持动态添加多账号** 的免费额度监控系统。
+
+## 1. 核心架构（非常重要）
+- **单 Worker 部署**：我只会在 **一个 Cloudflare 账号** 上部署这个 Worker。
+- **多账号管理**：被监控的 Cloudflare 账号（可以是任意数量）**不通过 `wrangler.toml` 的 `[env]` 配置**，而是存储在 **KV (KeyValue)** 中。
+- **动态添加**：提供一个前端页面，允许我输入 `Account ID`、`API Token`、`Account Name`，并保存到 KV。
+- **定时任务**：Worker 的 Cron Trigger 会循环读取 KV 中的所有账号配置，逐个抓取用量数据。
+
+## 2. 技术栈
+- **Runtime**: Cloudflare Workers (Hono.js)
+- **Storage**: 
+  - **KV**: 存储账号列表 (`accounts`) 和 最新的配额快照 (`quota_snapshot`)。
+  - **(可选) D1**: 预留接口，暂不强制使用，优先 KV。
+- **Frontend**: Cloudflare Pages (Vanilla JS + TailwindCSS CDN)，极简风格。
+- **Cron**: `0 */6 * * *` (每 6 小时执行一次)。
+
+## 3. 数据结构设计 (KV)
+
+### 3.1 账号配置 (Key: `ACCOUNTS`)
+json
+
+[
+
+{
+
+"id": "uuid-account-a",
+
+"name": "主账号",
+
+"accountId": "cf_account_id_here",
+
+"apiToken": "cf_api_token_here", // 只读权限即可
+
+"enabled": true
+
+},
+
+{
+
+"id": "uuid-account-b",
+
+"name": "备用账号",
+
+"accountId": "...",
+
+"apiToken": "...",
+
+"enabled": true
+
+}
+
+]
+
+纯文本
+### 3.2 配额快照 (Key: `QUOTA_SNAPSHOT`)
+
+json
+
+{
+
+"lastUpdated": "2026-01-15T10:00:00Z",
+
+"accounts": [
+
+{
+
+"accountId": "cf_account_id_here",
+
+"accountName": "主账号",
+
+"quotas": {
+
+"workers": { "used": 12000, "limit": 100000, "pct": 12 },
+
+"d1_reads": { "used": 5000, "limit": 50000, "pct": 10 },
+
+"r2_storage_gb": { "used": 2.5, "limit": 10, "pct": 25 },
+
+"ai_neurons": { "used": 3000, "limit": 10000, "pct": 30 }
+
+}
+
+}
+
+]
+
+}
+
+纯文本
+## 4. 后端逻辑 (Worker / Hono)
+
+### 4.1 路由设计
+- `GET /api/accounts` → 返回 KV 中的账号列表 (用于前端渲染)。
+- `POST /api/accounts` → 接收 JSON，生成 UUID，写入 KV (新增账号)。
+- `DELETE /api/accounts/:id` → 从 KV 删除账号。
+- `GET /api/snapshot` → 返回最新的 `QUOTA_SNAPSHOT` (供前端仪表盘调用)。
+- `POST /cron/fetch` → **Cron 入口**，执行以下逻辑：
+  1. 从 KV 读取 `ACCOUNTS`。
+  2. 遍历每一个 `enabled: true` 的账号。
+  3. 并行调用 GraphQL + REST API 抓取该账号的用量。
+  4. 计算百分比，组装成 `QUOTA_SNAPSHOT` 结构，写回 KV。
+  5. 检查是否有账号的任一指标 `pct >= 70%`，若有则调用 Webhook 告警。
+
+### 4.2 API 抓取逻辑
+- **GraphQL Endpoint**: `https://api.cloudflare.com/client/v4/graphql`
+- **Headers**: `Authorization: Bearer ${account.apiToken}`
+- **Queries**:
+  - Workers: `workersInvocationsAdaptive`
+  - D1: `d1QueriesAdaptive`
+  - KV: `workersKvAdaptive`
+  - Pages: `pagesBuildsAdaptive`
+- **REST APIs**:
+  - R2 Storage: `GET /accounts/${id}/r2/buckets` (累加 size)
+  - AI Metrics: `GET /accounts/${id}/ai/metrics`
+
+### 4.3 告警逻辑
+- 复用现有的 Uptime-Monitor 风格告警。
+- 如果超标，发送 Markdown 消息到 Webhook (钉钉/企微)。
+- 消息内容需包含：`账号名称`、`服务名`、`当前用量`、`百分比`。
+
+## 5. 前端逻辑 (Pages)
+
+- **页面布局**: 卡片网格 (Grid)。
+- **顶部**: 显示 `最后更新时间` + `手动刷新` 按钮 (调用 POST `/cron/fetch`)。
+- **卡片**: 每个账号一张卡片。
+  - 标题: 账号名称。
+  - 进度条: 每个服务一条 (Workers, D1, R2, AI...)。
+  - 颜色: `<60% green`, `60-80% yellow`, `>80% red`。
+- **管理页**: 一个简单的表单，用于添加新账号 (Name, Account ID, API Token)。
+
+## 6. 文件结构
+
+cf-quota-dashboard/
+
+├── worker/
+
+│   ├── src/
+
+│   │   ├── index.ts          # Hono 入口
+
+│   │   ├── kv-store.ts       # KV 读写封装 (getAccounts, saveSnapshot)
+
+│   │   ├── fetcher.ts        # GraphQL & REST 抓取逻辑
+
+│   │   ├── calculator.ts     # 百分比计算
+
+│   │   └── notifier.ts      # Webhook 告警
+
+│   ├── wrangler.toml         # 单账号配置，绑定 KV
+
+│   └── package.json
+
+├── frontend/
+
+│   ├── index.html            # 仪表盘主页
+
+│   ├── admin.html            # 账号管理页
+
+│   └── app.js               # 前端逻辑
+
+└── .github/workflows/deploy.yml
+
+纯文本
+## 7. wrangler.toml 关键配置
+
+toml
+
+name = "cf-quota-dashboard"
+
+compatibility_date = "2026-01-15"
+
+[[kv_namespaces]]
+
+binding = "KV"
+
+id = "YOUR_KV_NAMESPACE_ID" # 手动创建一次 KV
+
+[triggers]
+
+crons = ["0 */6 * * *"]
+
+[vars]
+
+WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+"
+
+纯文本
+## 8. 安全与约束
+- **API Token 权限**: 仅需要 `Account Analytics: Read`, `R2: Storage Read`, `AI: Read` 等只读权限，不要给编辑权限。
+- **错误处理**: 如果某个账号的 Token 失效，Worker 不应崩溃，应在 Snapshot 中标记 `"status": "error"`。
+- **TypeScript**: 全程使用 TS，定义 `AccountConfig`, `QuotaData` 等 Interface。
+
+## 9. 部署说明
+请输出详细的 README，包括：
+- 如何在 CF 控制台创建 KV Namespace。
+- 如何第一次手动在 KV 里插入一条测试账号数据（方便调试）。
+- 如何配置 GitHub Actions 部署（单账号版本）。
+
+## 10. 开发顺序建议
+请首先生成：
+1. `worker/wrangler.toml`
+2. `worker/src/kv-store.ts` (KV 封装)
+3. `worker/src/index.ts` (基础路由，先实现 GET /api/accounts)
+
+请开始生成代码。
+💡 给 Cursor 的补充指令（可选）
+
+为了让 Cursor 更精准，你可以在发送上述 Prompt 后，追加一句：
+
+"请特别注意：不要使用 wrangler.toml的 [env]来管理多账号，所有账号必须通过 KV 动态读取。后端代码里不要硬编码任何 Account ID。"

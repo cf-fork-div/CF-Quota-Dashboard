@@ -1,0 +1,26 @@
+name = "cf-quota-dashboard"
+main = "src/index.ts"
+compatibility_date = "2026-01-15"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "YOUR_KV_NAMESPACE_ID"
+
+[assets]
+directory = "../frontend"
+binding = "ASSETS"
+
+[triggers]
+crons = ["0 */6 * * *"]
+
+[vars]
+WEBHOOK_URL = ""
+ALERT_THRESHOLD = "70"
+# Admin auth (set PASSWORD via wrangler secret in production)
+USERNAME = "admin"
+# PASSWORD = ""  # use: wrangler secret put PASSWORD
+# Refresh budget (respects Workers 50 subrequest limit per invocation)
+ACCOUNT_CHECK_INTERVAL_MINUTES = "20"
+MAX_EXTERNAL_SUBREQUESTS_PER_RUN = "50"
+# Optional public snapshot API token (defaults to HMAC of PASSWORD+USERNAME)
+# PUBLIC_API_TOKEN = ""

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — CF Quota Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <div class="glass-card glass-card--hero">
+      <h1 class="glass-card__title">Admin Login</h1>
+      <p class="glass-card__subtitle">Sign in to manage accounts and channels.</p>
+
+      <form id="login-form" class="mt-4">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input name="username" required autocomplete="username" value="admin" class="glass-input" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input name="password" type="password" required autocomplete="current-password" class="glass-input" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+        <p id="login-message" class="form-message"></p>
+      </form>
+
+      <div class="login-footer">
+        <a href="/">Dashboard</a>
+        <a href="/admin">账号管理</a>
+        <a href="/channels">通知渠道</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { checkAuth, login } from '/auth.js';
+
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get('next') || '/admin';
+
+    checkAuth().then((me) => {
+      if (me.authenticated) {
+        window.location.href = next;
+      }
+    });
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const msg = document.getElementById('login-message');
+      try {
+        await login(form.username.value.trim(), form.password.value);
+        window.location.href = next;
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.className = 'form-message form-message--error';
+      }
+    });
+  </script>
+</body>
+</html>

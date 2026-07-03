@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manage Accounts — CF Quota Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="page-shell">
+  <header class="glass-nav">
+    <div class="glass-nav__inner glass-nav__inner--narrow">
+      <div class="glass-nav__brand">
+        <h1>Account Management</h1>
+        <p>Configure monitored Cloudflare accounts</p>
+      </div>
+      <nav class="glass-nav__links">
+        <a href="/" class="nav-link">Dashboard</a>
+        <a href="/admin" class="nav-link nav-link--active">账号管理</a>
+        <a href="/channels" class="nav-link">通知渠道</a>
+        <span id="nav-auth" class="nav-auth"></span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-main page-main--narrow space-y-8">
+    <section class="glass-card">
+      <h2 id="form-title" class="glass-card__title">Add Account</h2>
+      <form id="account-form" class="mt-4">
+        <div class="form-group">
+          <label class="form-label">Account Name</label>
+          <input name="name" required class="glass-input" placeholder="Main Account" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Account ID</label>
+          <input name="accountId" required class="glass-input glass-input--mono" placeholder="32-char Cloudflare Account ID" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">API Token (read-only)</label>
+          <input name="apiToken" type="password" required class="glass-input glass-input--mono" placeholder="Cloudflare API Token" />
+          <p class="form-hint">Requires Account Analytics: Read and product read permissions.</p>
+        </div>
+        <div class="form-actions">
+          <button type="button" id="verify-btn" class="btn btn-secondary">Verify Credentials</button>
+          <button type="submit" id="submit-btn" class="btn btn-primary">Save Account</button>
+          <button type="button" id="cancel-edit-btn" class="btn btn-ghost hidden">Cancel Edit</button>
+        </div>
+        <p id="form-message" class="form-message"></p>
+      </form>
+    </section>
+
+    <section>
+      <h2 class="section-title">Configured Accounts</h2>
+      <div id="accounts-list" class="loading-state">Loading…</div>
+    </section>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

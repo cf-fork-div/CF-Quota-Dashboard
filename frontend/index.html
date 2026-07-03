@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CF Quota Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="page-shell">
+  <header class="glass-nav">
+    <div class="glass-nav__inner">
+      <div class="glass-nav__brand">
+        <h1>CF Quota Dashboard</h1>
+        <p>Multi-account Cloudflare free tier monitoring</p>
+      </div>
+      <nav class="glass-nav__links">
+        <a href="/" class="nav-link nav-link--active">Dashboard</a>
+        <a href="/admin" class="nav-link">账号管理</a>
+        <a href="/channels" class="nav-link">通知渠道</a>
+        <button id="refresh-btn" class="btn btn-primary btn-sm">Manual Refresh</button>
+        <span id="nav-auth" class="nav-auth"></span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-main">
+    <div class="page-meta">
+      <div>
+        Last updated: <span id="last-updated" class="meta-value">—</span>
+      </div>
+      <p id="refresh-stats"></p>
+    </div>
+
+    <div id="accounts-grid" class="accounts-grid">
+      <div class="loading-state">Loading…</div>
+    </div>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
