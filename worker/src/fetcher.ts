@@ -482,35 +482,45 @@ async function fetchWorkersBuildMinutes(
   };
 }
 
+function dedupeResourcesById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    result.push(item);
+  }
+  return result;
+}
+
 async function fetchWorkerScripts(
   token: string,
   accountId: string,
 ): Promise<{ ok: true; scripts: Array<{ id: string; name: string }> } | { ok: false; error: string }> {
   const result = await safeQuery('worker-scripts', async () => {
     const scripts: Array<{ id: string; name: string }> = [];
+    const seen = new Set<string>();
+    const appendUnique = (batch: Array<{ id?: string }>) => {
+      for (const script of batch) {
+        if (!script.id || seen.has(script.id)) continue;
+        seen.add(script.id);
+        scripts.push({ id: script.id, name: script.id });
+      }
+    };
+
     const first = await restRequestRaw<Array<{ id?: string }>>(
       token,
       `/accounts/${accountId}/workers/scripts`,
     );
-    const appendBatch = (batch: Array<{ id?: string }>) => {
-      for (const script of batch) {
-        if (script.id) {
-          scripts.push({ id: script.id, name: script.id });
-        }
-      }
-    };
-    appendBatch(first.result ?? []);
+    appendUnique(first.result ?? []);
 
-    let page = 2;
-    while (page <= 100) {
+    const totalPages = first.result_info?.total_pages ?? 1;
+    for (let page = 2; page <= totalPages && page <= 100; page++) {
       const body = await restRequestRaw<Array<{ id?: string }>>(
         token,
         `/accounts/${accountId}/workers/scripts?page=${page}`,
       );
-      const batch = body.result ?? [];
-      appendBatch(batch);
-      if (batch.length < 100) break;
-      page += 1;
+      appendUnique(body.result ?? []);
     }
     return scripts;
   });
@@ -1465,7 +1475,7 @@ function buildWorkersBreakdown(
   byScript: Map<string, number>,
 ): ResourceUsageItem[] {
   return sortResourceItems(
-    scripts.map((script) => ({
+    dedupeResourcesById(scripts).map((script) => ({
       id: script.id,
       name: script.name,
       requests: byScript.get(script.id) ?? 0,
