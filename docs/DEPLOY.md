@@ -26,7 +26,8 @@
 2. **使用模板** → **Edit Cloudflare Workers**
 3. 令牌名称建议改为 `cf-quota-dashboard`
 4. **增加** Account → **D1 → Read**
-5. 创建令牌并复制 Token 值
+5. **建议增加**（启用按资源明细）：Workers Scripts、Cloudflare Pages、Workers KV Storage、Workers R2 Storage 的 **Read** 权限
+6. 创建令牌并复制 Token 值
 
 - 一键部署：设为 `QUICK_DEPLOY_API_TOKEN`
 - GitHub Actions：设为 `CLOUDFLARE_API_TOKEN`
@@ -105,8 +106,9 @@ git push origin master
 ## 3. 部署后验证
 
 1. **仪表盘** — 打开 `https://*.workers.dev/`，确认配额数据正常显示
-2. **管理后台** — 访问 `/admin`，使用部署时设置的密码登录
-3. **通知渠道**（可选）— 在 `/channels` 配置告警推送
+2. **按资源明细** — 展开账号「配额详情」，在 Workers / Pages / D1 / KV / R2 卡片下点击「按资源明细」，确认各资源占用正常（需 Token 含对应 Read 权限，见 [README](../README.md#-配置被监控账号)）
+3. **管理后台** — 访问 `/admin`，使用部署时设置的密码登录
+4. **通知渠道**（可选）— 在 `/channels` 配置告警推送
 
 如需监控其他 Cloudflare 账号，在 `/admin` [添加被监控账号](../README.md#-配置被监控账号)。
 

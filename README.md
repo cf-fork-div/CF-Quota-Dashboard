@@ -58,13 +58,28 @@
 - 可视化进度条与跨账号汇总；部分指标在账号未开通对应产品时 `available: false`
 - 限额定义见 `worker/src/free-tier-limits.ts`，可通过 `FREE_TIER_LIMITS` 环境变量覆盖
 
+### 按资源明细
+
+在账号 **「配额详情」** 中，Workers / Pages / D1 / KV / R2 卡片支持展开 **「按资源明细」**，查看各资源实际占用（免费额度仍为账号级汇总）：
+
+| 服务 | 明细内容 | 示例 |
+|------|----------|------|
+| **Workers** | 各 Worker 脚本今日请求数 | `my-api · 请求 320` |
+| **Pages** | 各 Pages 项目 Functions 请求数 | `my-site · 请求 157` |
+| **D1** | 各数据库读/写/存储 | `uptime-db · 读 684,884 · 写 1,734 · 存储 768 KB` |
+| **KV** | 各命名空间读/写/删/列/存储 | 仅显示有可读名称的命名空间 |
+| **R2** | 各存储桶存储与 Class A/B 操作 | `my-bucket · 存储 1.2 MB · A 82 · B 24` |
+
+- 明细列表按用量从高到低排序；仅展示 REST API 可识别的资源，过滤 GraphQL 中无名称的 UUID 条目
+- Workers 脚本列表按 ID 去重（Cloudflare `/workers/scripts` 为单页接口，不会重复拉取）
+
 ### 其他能力
 
 | 能力 | 说明 |
 |------|------|
 | **多账号 KV 管理** | 添加 / 编辑 / 删除 / 启停；保存前 Verify Credentials |
 | **访问触发刷新** | 快照过期时 `GET /api/snapshot` 自动拉取；Cron `0 */6 * * *` 兜底 |
-| **刷新预算** | 每账号约 10 次 subrequest，单次最多 50（约 5 个账号） |
+| **刷新预算** | 每账号约 14 次 subrequest，单次最多 50（约 3 个账号） |
 | **按账号告警** | 按服务勾选阈值；默认不启用，需手动配置 |
 | **多通道通知** | 企业微信、飞书、钉钉、Webhook、Telegram、Email |
 | **公开 API** | `GET /api/public/snapshot?token=` 供外部集成 |
@@ -106,6 +121,7 @@
 
 - **Glassmorphism** 毛玻璃风格，亮色 / 暗色主题（右下角 🌙/☀️ 切换）
 - 跨账号汇总卡片 + 各账号明细进度条
+- **按资源明细**：Workers / Pages / D1 / KV / R2 可展开查看各脚本、项目、数据库、命名空间、存储桶占用
 - 响应式布局，适配桌面与移动端
 - 手动刷新按钮（↻）与刷新间隔配置（15 / 20 / 30 / 60 / 120 / 360 分钟）
 
@@ -135,10 +151,19 @@
 
 | 权限 | 用途 |
 |------|------|
-| Account → Account Analytics → Read | GraphQL 用量（Workers、D1、KV、R2 等） |
-| Account → D1 → Read | REST 查询 D1 数据库个数 |
+| Account → Account Analytics → Read | GraphQL 用量（Workers、D1、KV、R2、Pages 等） |
+| Account → D1 → Read | REST 列出 D1 数据库及按库明细 |
 
-**建议一并勾选**：Pages、Workers Scripts、KV/R2 Storage、Queues、Hyperdrive、Vectorize、Account Settings 的 Read 权限。
+**按资源明细** 还需以下 Read 权限：
+
+| 权限 | 用途 |
+|------|------|
+| Account → Workers Scripts → Read | 列出 Worker 脚本名称 |
+| Account → Cloudflare Pages → Read | 列出 Pages 项目 |
+| Account → Workers KV Storage → Read | 列出 KV 命名空间 |
+| Account → Workers R2 Storage → Read | 列出 R2 存储桶 |
+
+**建议一并勾选**：Queues、Hyperdrive、Vectorize、Account Settings 的 Read 权限。
 
 > 未设置 `PASSWORD` 时写操作与管理读 API 返回 **503**；`GET /api/snapshot` 仍可公开读取。
 
